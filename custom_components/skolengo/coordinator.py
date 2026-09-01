@@ -135,7 +135,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             try:
                 absences = client.get_absences(self.student_id)
             except SkolengoApiError as err:
-                _LOGGER.warning("Unable to fetch absences: %s", err)
+                # Known to 500 on some schools due to a server-side bug in
+                # Skolengo's own API (not something we can fix); never fatal.
+                _LOGGER.debug("Unable to fetch absences (non-fatal): %s", err)
 
             evaluations: list[dict] = []
             try:

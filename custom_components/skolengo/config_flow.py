@@ -292,14 +292,16 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> "SkolengoOptionsFlow":
-        return SkolengoOptionsFlow(config_entry)
+        return SkolengoOptionsFlow()
 
 
 class SkolengoOptionsFlow(config_entries.OptionsFlow):
     """Options flow: allow changing the polling interval."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+    # `config_entry` is provided as a read-only property by the base
+    # `OptionsFlow` class (HA sets it automatically) since HA 2024.11;
+    # assigning to it manually raises AttributeError on current Core
+    # versions, so we no longer store it ourselves here.
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
