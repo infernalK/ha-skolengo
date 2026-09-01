@@ -489,6 +489,16 @@ def _evaluation_list(evaluation_services: list[dict]) -> list[dict]:
     return items
 
 
+def _average_mark(items: list[dict]) -> float | None:
+    """Average of the numeric `mark`s in a flattened evaluation list
+    (skill-based evaluations, which have no `mark`, are excluded).
+    """
+    grades = [item["mark"] for item in items if item["mark"] is not None]
+    if not grades:
+        return None
+    return round(sum(grades) / len(grades), 2)
+
+
 class SkolengoEvaluationsSensor(SkolengoSensorBase):
     """Number of recorded evaluations/grades, with the full list (used by
     the bundled `skolengo-evaluations-card`) as an attribute.
@@ -516,16 +526,19 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"evaluations": self._items()[:30]}
+        items = self._items()
+        return {"evaluations": items[:30], "average": _average_mark(items)}
 
 
 class SkolengoAverageGradeSensor(SkolengoSensorBase):
     """Best-effort overall average grade (numeric marks only -- a
     skill-based evaluation has no single "average" to fold in).
 
-    Some schools' grade endpoints are known to be flaky or unsupported by
-    Skolengo for certain establishments; in that case this sensor will
-    simply report `unknown`.
+    Same value as the "Notes" sensor's `average` attribute, exposed here
+    as its own entity for history graphing / automations. Some schools'
+    grade endpoints are known to be flaky or unsupported by Skolengo for
+    certain establishments; in that case this sensor will simply report
+    `unknown`.
     """
 
     _attr_icon = "mdi:school-outline"
@@ -536,9 +549,4 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
 
     @property
     def native_value(self) -> float | None:
-        grades = [
-            item["mark"] for item in _evaluation_list(self._evaluations) if item["mark"] is not None
-        ]
-        if not grades:
-            return None
-        return round(sum(grades) / len(grades), 2)
+        return _average_mark(_evaluation_list(self._evaluations))
