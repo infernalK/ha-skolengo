@@ -161,12 +161,29 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "next_alarm"
 
+    _FR_WEEKDAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "next_alarm", "Prochain réveil")
 
     @property
     def native_value(self):
         return self.coordinator.data.next_alarm if self.coordinator.data else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        alarm = self.coordinator.data.next_alarm if self.coordinator.data else None
+        if not alarm:
+            return {}
+        local = dt_util.as_local(alarm)
+        # A dashboard badge/tile showing this entity's `state` renders a
+        # relative time by default (device_class: timestamp) -- this
+        # attribute is a literal date+time string, for a badge configured
+        # with state_content: ["formatted"] instead. Weekday name is
+        # spelled out by hand (not strftime %A) to avoid depending on the
+        # host's locale being set to French.
+        weekday = self._FR_WEEKDAYS[local.weekday()]
+        return {"formatted": f"{weekday} {local.strftime('%d/%m à %H:%M')}"}
 
 
 def _serialize_lesson(lesson: dict) -> dict:
