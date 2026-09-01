@@ -1,13 +1,21 @@
 {
   "domain": "skolengo",
   "name": "Skolengo",
-  "codeowners": ["@infernalK"],
+  "codeowners": [
+    "@infernalK"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "frontend"],
+  "dependencies": [
+    "http",
+    "frontend"
+  ],
   "documentation": "https://github.com/infernalK/ha-skolengo",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/infernalK/ha-skolengo/issues",
-  "requirements": ["beautifulsoup4>=4.11.0", "requests>=2.28.0"],
-  "version": "1.0.0"
+  "requirements": [
+    "beautifulsoup4>=4.11.0",
+    "requests>=2.28.0"
+  ],
+  "version": "1.0.1"
 }
