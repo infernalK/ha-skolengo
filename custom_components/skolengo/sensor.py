@@ -22,6 +22,7 @@ async def async_setup_entry(
             SkolengoStudentClassSensor(coordinator, entry),
             SkolengoNextLessonSensor(coordinator, entry),
             SkolengoNextAlarmSensor(coordinator, entry),
+            SkolengoTimetableTodaySensor(coordinator, entry),
             SkolengoTimetableNextDaySensor(coordinator, entry),
             SkolengoTodayLessonCountSensor(coordinator, entry),
             SkolengoHomeworkDueSensor(coordinator, entry),
@@ -167,7 +168,68 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
         return self.coordinator.data.next_alarm if self.coordinator.data else None
 
 
-class SkolengoTimetableNextDaySensor(SkolengoSensorBase):
+def _serialize_lesson(lesson: dict) -> dict:
+    return {
+        "id": lesson.get("id"),
+        "subject": (lesson.get("subject") or {}).get("label") or lesson.get("title"),
+        "subject_color": (lesson.get("subject") or {}).get("color"),
+        "start": lesson.get("startDateTime"),
+        "end": lesson.get("endDateTime"),
+        "location": lesson.get("location") or lesson.get("room"),
+        "canceled": bool(lesson.get("canceled")),
+        "teachers": [
+            f"{t.get('firstName', '')} {t.get('lastName', '')}".strip()
+            for t in (lesson.get("teachers") or [])
+        ],
+    }
+
+
+class SkolengoTimetableDaySensorBase(SkolengoSensorBase):
+    """Shared day-grouping logic for the two timetable-by-day sensors."""
+
+    def _lessons_by_day(self) -> dict:
+        by_day: dict = {}
+        for lesson in self._lessons:
+            start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
+            if not start:
+                continue
+            start = dt_util.as_local(start)
+            by_day.setdefault(start.date(), []).append(lesson)
+        return by_day
+
+    def _lessons_for(self, day) -> list[dict]:
+        lessons = self._lessons_by_day().get(day, [])
+        return sorted(lessons, key=lambda lesson: lesson.get("startDateTime") or "")
+
+
+class SkolengoTimetableTodaySensor(SkolengoTimetableDaySensorBase):
+    """Today's full schedule, regardless of whether the day is already
+    over (unlike `timetable_next_day`, this never rolls over to
+    tomorrow) -- for a card that should always show "today", e.g. on a
+    wall-mounted dashboard.
+    """
+
+    _attr_icon = "mdi:calendar-today-outline"
+    _attr_native_unit_of_measurement = "cours"
+    _attr_translation_key = "timetable_today"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "timetable_today", "Emploi du temps (aujourd'hui)")
+
+    @property
+    def native_value(self) -> int:
+        return len(self._lessons_for(dt_util.now().date()))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        today = dt_util.now().date()
+        return {
+            "day": today.isoformat(),
+            "lessons": [_serialize_lesson(lesson) for lesson in self._lessons_for(today)],
+        }
+
+
+class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
     """Full schedule for the "next" school day: today's remaining lessons
     if the day isn't over yet, otherwise the next day that has lessons.
 
@@ -192,33 +254,8 @@ class SkolengoTimetableNextDaySensor(SkolengoSensorBase):
         day = self._chosen_day()
         return {
             "day": day.isoformat() if day else None,
-            "lessons": [
-                {
-                    "id": lesson.get("id"),
-                    "subject": (lesson.get("subject") or {}).get("label") or lesson.get("title"),
-                    "subject_color": (lesson.get("subject") or {}).get("color"),
-                    "start": lesson.get("startDateTime"),
-                    "end": lesson.get("endDateTime"),
-                    "location": lesson.get("location") or lesson.get("room"),
-                    "canceled": bool(lesson.get("canceled")),
-                    "teachers": [
-                        f"{t.get('firstName', '')} {t.get('lastName', '')}".strip()
-                        for t in (lesson.get("teachers") or [])
-                    ],
-                }
-                for lesson in lessons
-            ],
+            "lessons": [_serialize_lesson(lesson) for lesson in lessons],
         }
-
-    def _lessons_by_day(self) -> dict:
-        by_day: dict = {}
-        for lesson in self._lessons:
-            start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
-            if not start:
-                continue
-            start = dt_util.as_local(start)
-            by_day.setdefault(start.date(), []).append(lesson)
-        return by_day
 
     def _chosen_day(self):
         now = dt_util.now()
@@ -241,8 +278,7 @@ class SkolengoTimetableNextDaySensor(SkolengoSensorBase):
         day = self._chosen_day()
         if day is None:
             return []
-        lessons = self._lessons_by_day().get(day, [])
-        return sorted(lessons, key=lambda lesson: lesson.get("startDateTime") or "")
+        return self._lessons_for(day)
 
 
 class SkolengoTodayLessonCountSensor(SkolengoSensorBase):

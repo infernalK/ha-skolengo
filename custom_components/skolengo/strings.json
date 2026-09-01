@@ -66,6 +66,7 @@
       "student_class": { "name": "Classe" },
       "next_lesson": { "name": "Prochain cours" },
       "next_alarm": { "name": "Prochain réveil" },
+      "timetable_today": { "name": "Emploi du temps (aujourd'hui)" },
       "timetable_next_day": { "name": "Emploi du temps (jour suivant)" },
       "today_lesson_count": { "name": "Cours aujourd'hui" },
       "homework_due": { "name": "Devoirs à faire" },
