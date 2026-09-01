@@ -1,0 +1,76 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Rechercher votre établissement",
+        "description": "Saisissez le nom ou la ville de votre établissement scolaire Skolengo.",
+        "data": {
+          "school_search": "Nom ou ville de l'établissement"
+        }
+      },
+      "school": {
+        "title": "Sélectionner l'établissement",
+        "data": {
+          "school_id": "Établissement"
+        }
+      },
+      "credentials": {
+        "title": "Connexion à Skolengo",
+        "description": "Entrez les identifiants que vous utilisez habituellement pour vous connecter à l'espace Skolengo de votre établissement.",
+        "data": {
+          "username": "Identifiant",
+          "password": "Mot de passe"
+        }
+      },
+      "student": {
+        "title": "Sélectionner l'élève",
+        "description": "Votre compte est relié à plusieurs élèves. Choisissez celui à suivre (vous pourrez ajouter les autres via une nouvelle intégration).",
+        "data": {
+          "student_id": "Élève"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnexion à Skolengo",
+        "description": "La session a expiré, merci de vous reconnecter.",
+        "data": {
+          "username": "Identifiant",
+          "password": "Mot de passe"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de contacter les serveurs Skolengo.",
+      "invalid_auth": "Identifiants incorrects, ou formulaire de connexion non pris en charge pour cet établissement.",
+      "no_school_found": "Aucun établissement trouvé pour cette recherche.",
+      "no_student_found": "Aucun élève trouvé sur ce compte.",
+      "unknown": "Erreur inattendue."
+    },
+    "abort": {
+      "already_configured": "Cet élève est déjà configuré.",
+      "reauth_successful": "Reconnexion réussie."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Skolengo",
+        "data": {
+          "scan_interval": "Intervalle de rafraîchissement (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_lesson": { "name": "Prochain cours" },
+      "today_lesson_count": { "name": "Cours aujourd'hui" },
+      "homework_due": { "name": "Devoirs à faire" },
+      "absences": { "name": "Absences" },
+      "average_grade": { "name": "Moyenne générale" }
+    },
+    "calendar": {
+      "timetable": { "name": "Emploi du temps" },
+      "homework": { "name": "Devoirs" }
+    }
+  }
+}

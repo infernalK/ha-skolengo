@@ -1,0 +1,666 @@
+"""Lightweight, unofficial Skolengo API client.
+
+This module implements just enough of the Skolengo ("bff-sko-app") JSON:API
+to authenticate a user against their school's identity provider (OpenID
+Connect, fronted by a CAS/SSO login form that varies from school to school)
+and to pull the timetable (agenda), homework, absences and evaluations for a
+student.
+
+This is a community reverse-engineered client. It is NOT affiliated with,
+endorsed by, or supported by Skolengo / Index Education. It may break at any
+time if Skolengo changes their API or login pages.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Any
+from urllib.parse import parse_qs, urljoin, urlparse
+
+import requests
+from bs4 import BeautifulSoup
+
+from .const import API_BASE_URL, OID_CLIENT_ID_B64, OID_CLIENT_SECRET_B64, REDIRECT_URI
+
+_LOGGER = logging.getLogger(__name__)
+
+OID_CLIENT_ID = base64.b64decode(OID_CLIENT_ID_B64).decode()
+OID_CLIENT_SECRET = base64.b64decode(OID_CLIENT_SECRET_B64).decode()
+
+MAX_REDIRECT_HOPS = 15
+USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0 Mobile Safari/537.36 SkoApp/HomeAssistant"
+)
+
+# Best-effort field name guesses for generic CAS/SSO login forms.
+USERNAME_FIELD_CANDIDATES = (
+    "username",
+    "email",
+    "identifiant",
+    "login",
+    "j_username",
+    "casusername",
+    "user",
+)
+PASSWORD_FIELD_CANDIDATES = (
+    "password",
+    "pwd",
+    "j_password",
+    "caspassword",
+    "pass",
+)
+
+
+class SkolengoError(Exception):
+    """Base error for the Skolengo client."""
+
+
+class SkolengoAuthError(SkolengoError):
+    """Raised when authentication fails (bad credentials, unsupported login page, etc.)."""
+
+
+class SkolengoApiError(SkolengoError):
+    """Raised when a call to the Skolengo API fails."""
+
+
+def _decode_jwt_payload(token: str) -> dict[str, Any]:
+    """Decode (without verifying) the payload of a JWT."""
+    try:
+        payload_b64 = token.split(".")[1]
+        padding = "=" * (-len(payload_b64) % 4)
+        payload = base64.urlsafe_b64decode(payload_b64 + padding)
+        return json.loads(payload)
+    except Exception as err:  # noqa: BLE001
+        raise SkolengoAuthError(f"Unable to decode id_token: {err}") from err
+
+
+def jsonapi_deserialize(document: dict[str, Any]) -> Any:
+    """Flatten a JSON:API document (data + included) into plain nested dicts.
+
+    This is a small, self-contained reimplementation of what the
+    `json_api_doc` package does, so we avoid depending on a niche third
+    party library for ~40 lines of logic.
+    """
+    included = document.get("included", [])
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for res in included:
+        index[(res.get("type"), res.get("id"))] = res
+
+    def resolve(resource: dict[str, Any], _seen: set[tuple[str, str]] | None = None) -> dict[str, Any]:
+        _seen = _seen or set()
+        key = (resource.get("type"), resource.get("id"))
+        out: dict[str, Any] = {"id": resource.get("id"), "type": resource.get("type")}
+        out.update(resource.get("attributes", {}) or {})
+        relationships = resource.get("relationships", {}) or {}
+        for rel_name, rel_body in relationships.items():
+            rel_data = (rel_body or {}).get("data")
+            if rel_data is None:
+                out[rel_name] = None
+            elif isinstance(rel_data, list):
+                items = []
+                for item in rel_data:
+                    item_key = (item.get("type"), item.get("id"))
+                    if item_key in _seen:
+                        continue
+                    full = index.get(item_key, item)
+                    items.append(resolve(full, _seen | {key}))
+                out[rel_name] = items
+            else:
+                item_key = (rel_data.get("type"), rel_data.get("id"))
+                if item_key in _seen:
+                    out[rel_name] = None
+                else:
+                    full = index.get(item_key, rel_data)
+                    out[rel_name] = resolve(full, _seen | {key})
+        return out
+
+    data = document.get("data")
+    if data is None:
+        return None
+    if isinstance(data, list):
+        return [resolve(item) for item in data]
+    return resolve(data)
+
+
+@dataclass
+class SkolengoTokens:
+    access_token: str
+    refresh_token: str | None
+    id_token: str | None
+    expires_at: float
+    token_endpoint: str
+
+    @property
+    def is_expired(self) -> bool:
+        return time.time() >= (self.expires_at - 30)
+
+
+@dataclass
+class SkolengoSchool:
+    id: str
+    name: str
+    ems_code: str
+    oidc_wellknown_url: str
+    city: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+class SkolengoClient:
+    """Client handling authentication and data retrieval for one student."""
+
+    def __init__(
+        self,
+        school_id: str,
+        ems_code: str,
+        tokens: SkolengoTokens | None = None,
+        session: requests.Session | None = None,
+    ) -> None:
+        self.school_id = school_id
+        self.ems_code = ems_code
+        self.tokens = tokens
+        self._session = session or requests.Session()
+        self._session.headers.update({"User-Agent": USER_AGENT})
+
+    # ------------------------------------------------------------------
+    # School lookup
+    # ------------------------------------------------------------------
+    @staticmethod
+    def search_schools(text: str, session: requests.Session | None = None) -> list[SkolengoSchool]:
+        session = session or requests.Session()
+        session.headers.setdefault("User-Agent", USER_AGENT)
+        try:
+            resp = session.get(
+                f"{API_BASE_URL}/schools",
+                params={"page[limit]": 25, "page[offset]": 0, "filter[text]": text},
+                timeout=20,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as err:
+            raise SkolengoApiError(f"Unable to search schools: {err}") from err
+
+        try:
+            items = jsonapi_deserialize(resp.json()) or []
+        except ValueError as err:
+            raise SkolengoApiError(f"Invalid response while searching schools: {err}") from err
+
+        schools: list[SkolengoSchool] = []
+        for item in items:
+            wellknown = item.get("emsOIDCWellKnownUrl")
+            if not wellknown:
+                continue
+            schools.append(
+                SkolengoSchool(
+                    id=item["id"],
+                    name=item.get("name") or item.get("addressCity") or item["id"],
+                    ems_code=item.get("emsCode", ""),
+                    oidc_wellknown_url=wellknown,
+                    city=item.get("addressCity"),
+                    raw=item,
+                )
+            )
+        return schools
+
+    # ------------------------------------------------------------------
+    # OIDC login (generic CAS/SSO HTML form scraping)
+    # ------------------------------------------------------------------
+    @classmethod
+    def login(
+        cls,
+        school: SkolengoSchool,
+        username: str,
+        password: str,
+    ) -> "SkolengoClient":
+        """Perform the full OIDC authorization-code login flow for a school.
+
+        Because the redirect_uri is a mobile-app-only custom URI scheme
+        (`skoapp-prod://sign-in-callback`), we can't literally follow the
+        final redirect. Instead we manually walk the HTTP redirect chain
+        and pull the `code` query parameter off the first `Location` header
+        that starts with that scheme.
+        """
+        session = requests.Session()
+        session.headers.update({"User-Agent": USER_AGENT})
+
+        discovery = cls._fetch_discovery_document(school.oidc_wellknown_url, session)
+        authorization_endpoint = discovery.get("authorization_endpoint")
+        token_endpoint = discovery.get("token_endpoint")
+        if not authorization_endpoint or not token_endpoint:
+            raise SkolengoAuthError(
+                "The school's identity provider discovery document is missing "
+                "authorization_endpoint/token_endpoint."
+            )
+
+        scopes_supported = discovery.get("scopes_supported") or []
+        wanted_scopes = ["openid", "profile", "email", "offline_access"]
+        scopes = [s for s in wanted_scopes if s in scopes_supported] or ["openid"]
+
+        auth_params = {
+            "response_type": "code",
+            "client_id": OID_CLIENT_ID,
+            "redirect_uri": REDIRECT_URI,
+            "scope": " ".join(scopes),
+            "state": "ha-skolengo",
+        }
+
+        try:
+            resp = session.get(
+                authorization_endpoint, params=auth_params, timeout=20, allow_redirects=False
+            )
+        except requests.RequestException as err:
+            raise SkolengoAuthError(f"Unable to reach the authorization endpoint: {err}") from err
+
+        auth_url = resp.url
+        code = cls._walk_redirect_chain(
+            session, resp, auth_url, username=username, password=password
+        )
+
+        if not code:
+            raise SkolengoAuthError(
+                "Could not obtain an authorization code from the school's login "
+                "flow. The login page format may not be supported."
+            )
+
+        return cls._exchange_code(school, session, token_endpoint, code)
+
+    @staticmethod
+    def _fetch_discovery_document(wellknown_url: str, session: requests.Session) -> dict[str, Any]:
+        try:
+            resp = session.get(wellknown_url, timeout=20)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as err:
+            raise SkolengoAuthError(f"Unable to fetch OIDC discovery document: {err}") from err
+
+    @staticmethod
+    def _extract_code_from_url(url: str) -> str | None:
+        if not url:
+            return None
+        if url.startswith(REDIRECT_URI) or "code=" in url:
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            codes = qs.get("code")
+            if codes:
+                return codes[0]
+        return None
+
+    @staticmethod
+    def _find_meta_refresh_url(page_url: str, html: str) -> str | None:
+        """Return the target URL of a `<meta http-equiv="refresh">` tag, if any.
+
+        Several French ENT/SSO relay pages (intermediate hops in federated
+        login chains such as Éduconnect or SAML-based academic portals) use
+        a meta-refresh instead of an HTTP 30x redirect between steps.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        for meta in soup.find_all("meta"):
+            if (meta.get("http-equiv") or "").lower() != "refresh":
+                continue
+            content = meta.get("content") or ""
+            # Content looks like "0;url=https://..." or "0; URL='https://...'"
+            _, _, rest = content.partition(";")
+            rest = rest.strip()
+            if rest.lower().startswith("url="):
+                target = rest[4:].strip().strip("'\"")
+                if target:
+                    return urljoin(page_url, target)
+        return None
+
+    @classmethod
+    def _fill_and_submit_form(
+        cls,
+        session: requests.Session,
+        page_response: requests.Response,
+        username: str,
+        password: str,
+        allow_relay: bool,
+    ) -> tuple[requests.Response, bool]:
+        """Parse a generic CAS/SSO page and POST credentials (or relay it).
+
+        Some federated login chains (Éduconnect, SAML-based academic
+        portals, ...) insert intermediate "relay" pages between the actual
+        login page and the final redirect: an auto-submitting form made
+        only of hidden fields (e.g. a SAML POST binding), with no
+        identifier/password to fill in. When `allow_relay` is True and no
+        credential fields are found, such a form is submitted as-is instead
+        of raising, and the second return value is False (no credentials
+        were actually submitted yet, so the caller should keep waiting for
+        the real login page).
+        """
+        page_url = page_response.url
+        soup = BeautifulSoup(page_response.text, "html.parser")
+        form = soup.find("form")
+        if form is None:
+            raise SkolengoAuthError(
+                "Impossible de trouver le formulaire de connexion sur la page de "
+                "l'établissement (login form not found)."
+            )
+
+        action = form.get("action") or page_url
+        post_url = urljoin(page_url, action)
+
+        form_data: dict[str, str] = {}
+        username_field = None
+        password_field = None
+
+        for input_tag in form.find_all("input"):
+            name = input_tag.get("name")
+            if not name:
+                continue
+            input_type = (input_tag.get("type") or "text").lower()
+            value = input_tag.get("value", "")
+
+            if input_type == "hidden":
+                form_data[name] = value
+                continue
+
+            lower_name = name.lower()
+            if input_type == "password" or any(c in lower_name for c in PASSWORD_FIELD_CANDIDATES):
+                password_field = name
+                continue
+            if input_type in ("text", "email") or any(
+                c in lower_name for c in USERNAME_FIELD_CANDIDATES
+            ):
+                username_field = name
+                continue
+            # Any other visible input (e.g. a submit button with a name) gets
+            # its default value carried through.
+            if input_type in ("submit", "checkbox", "radio"):
+                if input_type != "submit" and not input_tag.get("checked"):
+                    continue
+                form_data[name] = value or "on"
+
+        if not username_field or not password_field:
+            if allow_relay:
+                # Likely an auto-submitting relay/continue form (e.g. SAML
+                # POST binding) rather than the actual login page.
+                try:
+                    resp = session.post(post_url, data=form_data, timeout=20, allow_redirects=False)
+                except requests.RequestException as err:
+                    raise SkolengoAuthError(f"Relay form submission failed: {err}") from err
+                return resp, False
+            raise SkolengoAuthError(
+                "Impossible d'identifier les champs identifiant/mot de passe du "
+                "formulaire de connexion (unrecognized login form)."
+            )
+
+        form_data[username_field] = username
+        form_data[password_field] = password
+
+        try:
+            resp = session.post(post_url, data=form_data, timeout=20, allow_redirects=False)
+        except requests.RequestException as err:
+            raise SkolengoAuthError(f"Login form submission failed: {err}") from err
+        return resp, True
+
+    @classmethod
+    def _walk_redirect_chain(
+        cls,
+        session: requests.Session,
+        response: requests.Response,
+        current_url: str,
+        username: str,
+        password: str,
+    ) -> str | None:
+        """Manually follow redirects (since requests can't follow a custom
+        non-HTTP URI scheme) until we hit the redirect_uri carrying `code`,
+        submitting the login form (once) if/when we land on it.
+        """
+        resp = response
+        url = current_url
+        credentials_submitted = False
+
+        for _ in range(MAX_REDIRECT_HOPS):
+            code = cls._extract_code_from_url(resp.url)
+            if code:
+                return code
+
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get("Location")
+                if not location:
+                    return None
+                if location.startswith(REDIRECT_URI):
+                    return cls._extract_code_from_url(location)
+                next_url = urljoin(url, location)
+                try:
+                    resp = session.get(next_url, timeout=20, allow_redirects=False)
+                except requests.RequestException as err:
+                    raise SkolengoAuthError(f"Redirect follow-up failed: {err}") from err
+                url = next_url
+                continue
+
+            if resp.status_code == 200:
+                meta_url = cls._find_meta_refresh_url(resp.url, resp.text)
+                if meta_url:
+                    # Relay page using <meta refresh> instead of an HTTP
+                    # redirect (common in some federated ENT login chains).
+                    if meta_url.startswith(REDIRECT_URI):
+                        return cls._extract_code_from_url(meta_url)
+                    try:
+                        resp = session.get(meta_url, timeout=20, allow_redirects=False)
+                    except requests.RequestException as err:
+                        raise SkolengoAuthError(f"Meta-refresh follow-up failed: {err}") from err
+                    url = meta_url
+                    continue
+
+                prev_resp = resp
+                resp, was_credentials = cls._fill_and_submit_form(
+                    session, resp, username, password, allow_relay=True
+                )
+                if was_credentials and credentials_submitted:
+                    # A credential-looking login form was shown twice in a
+                    # row: treat it as invalid credentials rather than loop
+                    # forever on an unsupported flow.
+                    lowered = prev_resp.text.lower()
+                    if any(
+                        kw in lowered
+                        for kw in ("mot de passe", "password", "identifiant", "incorrect", "erreur")
+                    ):
+                        raise SkolengoAuthError(
+                            "Identifiants incorrects, ou formulaire de connexion "
+                            "réaffiché (invalid credentials or unsupported login flow)."
+                        )
+                url = resp.url or url
+                credentials_submitted = credentials_submitted or was_credentials
+                continue
+
+            return None
+
+        return None
+
+    @classmethod
+    def _exchange_code(
+        cls, school: SkolengoSchool, session: requests.Session, token_endpoint: str, code: str
+    ) -> "SkolengoClient":
+        try:
+            resp = session.post(
+                token_endpoint,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": REDIRECT_URI,
+                    "client_id": OID_CLIENT_ID,
+                    "client_secret": OID_CLIENT_SECRET,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as err:
+            raise SkolengoAuthError(f"Token exchange failed: {err}") from err
+
+        tokens = SkolengoTokens(
+            access_token=payload["access_token"],
+            refresh_token=payload.get("refresh_token"),
+            id_token=payload.get("id_token"),
+            expires_at=time.time() + float(payload.get("expires_in", 3600)),
+            token_endpoint=token_endpoint,
+        )
+        client = cls(school.id, school.ems_code, tokens=tokens, session=session)
+        return client
+
+    # ------------------------------------------------------------------
+    # Token refresh
+    # ------------------------------------------------------------------
+    def refresh_access_token(self) -> None:
+        if not self.tokens or not self.tokens.refresh_token:
+            raise SkolengoAuthError("No refresh token available; user must log in again.")
+        try:
+            resp = self._session.post(
+                self.tokens.token_endpoint,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.tokens.refresh_token,
+                    "client_id": OID_CLIENT_ID,
+                    "client_secret": OID_CLIENT_SECRET,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as err:
+            raise SkolengoAuthError(f"Unable to refresh access token: {err}") from err
+
+        self.tokens = SkolengoTokens(
+            access_token=payload["access_token"],
+            refresh_token=payload.get("refresh_token", self.tokens.refresh_token),
+            id_token=payload.get("id_token", self.tokens.id_token),
+            expires_at=time.time() + float(payload.get("expires_in", 3600)),
+            token_endpoint=self.tokens.token_endpoint,
+        )
+
+    def get_user_id(self) -> str:
+        if not self.tokens or not self.tokens.id_token:
+            raise SkolengoAuthError("Missing id_token; cannot determine user id.")
+        claims = _decode_jwt_payload(self.tokens.id_token)
+        sub = claims.get("sub")
+        if not sub:
+            raise SkolengoAuthError("id_token has no 'sub' claim.")
+        return sub
+
+    # ------------------------------------------------------------------
+    # Generic authenticated request helper
+    # ------------------------------------------------------------------
+    def _headers(self) -> dict[str, str]:
+        if not self.tokens:
+            raise SkolengoAuthError("Client is not authenticated.")
+        return {
+            "Authorization": f"Bearer {self.tokens.access_token}",
+            "X-Skolengo-Date-Format": "utc",
+            "X-Skolengo-School-Id": self.school_id,
+            "X-Skolengo-Ems-Code": self.ems_code,
+            "Accept": "application/json",
+        }
+
+    def _request(self, method: str, path: str, params: dict[str, Any] | None = None) -> Any:
+        if self.tokens and self.tokens.is_expired:
+            self.refresh_access_token()
+
+        url = f"{API_BASE_URL}{path}"
+        try:
+            resp = self._session.request(
+                method, url, params=params, headers=self._headers(), timeout=30
+            )
+        except requests.RequestException as err:
+            raise SkolengoApiError(f"Request to {path} failed: {err}") from err
+
+        if resp.status_code == 401:
+            # Try a single refresh + retry.
+            self.refresh_access_token()
+            try:
+                resp = self._session.request(
+                    method, url, params=params, headers=self._headers(), timeout=30
+                )
+            except requests.RequestException as err:
+                raise SkolengoApiError(f"Request to {path} failed after refresh: {err}") from err
+            if resp.status_code == 401:
+                raise SkolengoAuthError("Authentication expired; re-authentication required.")
+
+        if resp.status_code >= 400:
+            raise SkolengoApiError(f"Skolengo API error {resp.status_code} on {path}: {resp.text[:300]}")
+
+        if not resp.content:
+            return None
+        try:
+            return resp.json()
+        except ValueError as err:
+            raise SkolengoApiError(f"Invalid JSON response from {path}: {err}") from err
+
+    # ------------------------------------------------------------------
+    # Endpoints
+    # ------------------------------------------------------------------
+    def get_user_info(self, user_id: str) -> dict[str, Any]:
+        doc = self._request("GET", f"/users-info/{user_id}")
+        return jsonapi_deserialize(doc)
+
+    def get_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        params = {
+            "filter[student.id]": student_id,
+            "filter[date][GE]": start.isoformat(),
+            "filter[date][LE]": end.isoformat(),
+            "include": (
+                "lessons,lessons.subject,lessons.teachers,"
+                "homeworkAssignments,homeworkAssignments.subject"
+            ),
+        }
+        doc = self._request("GET", "/agendas", params=params)
+        return jsonapi_deserialize(doc) or []
+
+    def get_homework(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        params = {
+            "filter[student.id]": student_id,
+            "filter[dueDate][GE]": start.isoformat(),
+            "filter[dueDate][LE]": end.isoformat(),
+        }
+        doc = self._request("GET", "/homework-assignments", params=params)
+        return jsonapi_deserialize(doc) or []
+
+    def set_homework_done(self, homework_id: str, done: bool) -> None:
+        url = f"{API_BASE_URL}/homework-assignments/{homework_id}"
+        body = {
+            "data": {
+                "type": "homework",
+                "id": homework_id,
+                "attributes": {"done": done},
+            }
+        }
+        if self.tokens and self.tokens.is_expired:
+            self.refresh_access_token()
+        try:
+            resp = self._session.patch(
+                url,
+                json=body,
+                headers={**self._headers(), "Content-Type": "application/json"},
+                timeout=20,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as err:
+            raise SkolengoApiError(f"Unable to update homework {homework_id}: {err}") from err
+
+    def get_absences(self, student_id: str) -> list[dict[str, Any]]:
+        params = {"filter[student.id]": student_id}
+        doc = self._request("GET", "/absence-files", params=params)
+        return jsonapi_deserialize(doc) or []
+
+    def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
+        params = {"filter[student.id]": student_id}
+        doc = self._request("GET", "/evaluations-settings", params=params)
+        return jsonapi_deserialize(doc) or []
+
+    def get_evaluations(self, student_id: str, period_id: str | None = None) -> list[dict[str, Any]]:
+        """Best-effort: some schools return errors for this endpoint."""
+        params: dict[str, Any] = {"filter[student.id]": student_id}
+        if period_id:
+            params["filter[period.id]"] = period_id
+        try:
+            doc = self._request("GET", "/evaluation-services", params=params)
+        except SkolengoApiError as err:
+            _LOGGER.debug("Evaluations endpoint failed (non-fatal): %s", err)
+            return []
+        return jsonapi_deserialize(doc) or []
