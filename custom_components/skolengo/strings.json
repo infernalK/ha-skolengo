@@ -55,7 +55,8 @@
       "init": {
         "title": "Options Skolengo",
         "data": {
-          "scan_interval": "Intervalle de rafraîchissement (minutes)"
+          "scan_interval": "Intervalle de rafraîchissement (minutes)",
+          "alarm_offset": "Temps de préparation avant le 1er cours (minutes)"
         }
       }
     }
@@ -63,6 +64,7 @@
   "entity": {
     "sensor": {
       "next_lesson": { "name": "Prochain cours" },
+      "next_alarm": { "name": "Prochain réveil" },
       "today_lesson_count": { "name": "Cours aujourd'hui" },
       "homework_due": { "name": "Devoirs à faire" },
       "absences": { "name": "Absences" },

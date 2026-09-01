@@ -29,6 +29,12 @@ CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 30  # minutes
 MIN_SCAN_INTERVAL = 5
 
+# How long before the first lesson of the next school day the
+# "next_alarm" sensor should fire (e.g. time needed to get ready).
+CONF_ALARM_OFFSET = "alarm_offset"
+DEFAULT_ALARM_OFFSET = 60  # minutes
+MIN_ALARM_OFFSET = 0
+
 DEFAULT_UPDATE_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 
 # Window (in days) used to fetch the timetable / homework / agenda around

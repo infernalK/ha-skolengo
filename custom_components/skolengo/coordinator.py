@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,12 +15,14 @@ from .api import SkolengoApiError, SkolengoAuthError, SkolengoClient, SkolengoTo
 from .const import (
     AGENDA_DAYS_FUTURE,
     AGENDA_DAYS_PAST,
+    CONF_ALARM_OFFSET,
     CONF_REFRESH_TOKEN,
     CONF_SCHOOL_EMS_CODE,
     CONF_SCHOOL_ID,
     CONF_SCHOOL_OIDC_WELLKNOWN,
     CONF_STUDENT_ID,
     CONF_USER_ID,
+    DEFAULT_ALARM_OFFSET,
     DOMAIN,
     HOMEWORK_DAYS_FUTURE,
 )
@@ -37,6 +39,7 @@ class SkolengoData:
     absences: list[dict] = field(default_factory=list)
     evaluations: list[dict] = field(default_factory=list)
     student_name: str = ""
+    next_alarm: datetime | None = None
 
 
 class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
@@ -146,11 +149,15 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 # Known to be flaky/unsupported on some schools; never fatal.
                 _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
 
+            alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
+            next_alarm = _compute_next_alarm(lessons, alarm_offset)
+
             return SkolengoData(
                 lessons=lessons,
                 homework=homework,
                 absences=absences,
                 evaluations=evaluations,
+                next_alarm=next_alarm,
             )
 
         try:
@@ -163,3 +170,37 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         self._async_persist_refresh_token()
         return data
+
+
+def _compute_next_alarm(lessons: list[dict], offset_minutes: int) -> datetime | None:
+    """First lesson of the next school day (today included), minus offset.
+
+    Groups non-canceled lessons by local calendar day and walks days in
+    chronological order (skipping weekends/holidays, which simply have no
+    lessons). For each day, the alarm would be that day's earliest lesson
+    start time minus `offset_minutes`; the first such alarm time that is
+    still in the future is returned -- so once today's alarm has passed
+    (or there are no lessons left today), it automatically rolls over to
+    the next day that actually has lessons.
+    """
+    now = dt_util.now()
+    by_day: dict[date, list[datetime]] = {}
+
+    for lesson in lessons:
+        if lesson.get("canceled"):
+            continue
+        start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
+        if not start:
+            continue
+        start = dt_util.as_local(start)
+        by_day.setdefault(start.date(), []).append(start)
+
+    for day in sorted(by_day):
+        if day < now.date():
+            continue
+        first_start = min(by_day[day])
+        alarm_time = first_start - timedelta(minutes=offset_minutes)
+        if alarm_time > now:
+            return alarm_time
+
+    return None

@@ -1,7 +1,7 @@
 """Sensor platform for Skolengo."""
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
@@ -20,6 +20,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             SkolengoNextLessonSensor(coordinator, entry),
+            SkolengoNextAlarmSensor(coordinator, entry),
             SkolengoTodayLessonCountSensor(coordinator, entry),
             SkolengoHomeworkDueSensor(coordinator, entry),
             SkolengoAbsencesSensor(coordinator, entry),
@@ -112,6 +113,23 @@ class SkolengoNextLessonSensor(SkolengoSensorBase):
             return None
         upcoming.sort(key=lambda item: item[0])
         return upcoming[0][1]
+
+
+class SkolengoNextAlarmSensor(SkolengoSensorBase):
+    """When to wake up: first lesson of the next school day, minus a
+    configurable lead time (see the integration's Options, default 60 min).
+    """
+
+    _attr_icon = "mdi:alarm"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "next_alarm"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "next_alarm", "Prochain réveil")
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.next_alarm if self.coordinator.data else None
 
 
 class SkolengoTodayLessonCountSensor(SkolengoSensorBase):

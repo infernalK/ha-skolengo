@@ -12,11 +12,12 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
 - **Calendrier `calendar.devoirs`** : les devoirs à venir, avec leur date de rendu, sous forme d'événements toute la journée.
 - **Capteurs** :
   - Prochain cours
+  - Prochain réveil (`sensor.skolengo_..._next_alarm`, horodatage) : heure du premier cours du prochain jour d'école, moins un délai réglable (temps de préparation), pratique pour déclencher une automatisation de réveil. Passe automatiquement au jour suivant une fois l'heure de réveil du jour dépassée (week-ends et vacances sans cours sont sautés).
   - Nombre de cours aujourd'hui
   - Nombre de devoirs à faire
   - Nombre d'absences enregistrées
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
-- Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration).
+- Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
 
 ## Installation

@@ -16,6 +16,7 @@ from .api import (
     SkolengoSchool,
 )
 from .const import (
+    CONF_ALARM_OFFSET,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
     CONF_SCHOOL_EMS_CODE,
@@ -25,8 +26,10 @@ from .const import (
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
     CONF_USER_ID,
+    DEFAULT_ALARM_OFFSET,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MIN_ALARM_OFFSET,
     MIN_SCAN_INTERVAL,
 )
 
@@ -309,16 +312,22 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(
+        current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        current_alarm_offset = self.config_entry.options.get(
+            CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET
         )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
-                        vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)
-                    )
+                    vol.Required(
+                        CONF_SCAN_INTERVAL, default=current_scan_interval
+                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
+                    vol.Required(
+                        CONF_ALARM_OFFSET, default=current_alarm_offset
+                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ALARM_OFFSET)),
                 }
             ),
         )
