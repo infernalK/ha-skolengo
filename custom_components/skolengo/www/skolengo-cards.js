@@ -243,6 +243,95 @@
     return `<style>${BASE_STYLE}</style><div class="skolengo-card">${bodyHtml}</div>`;
   }
 
+  function findEntityBySuffix(hass, suffixes) {
+    if (!hass || !hass.states) return "";
+    const list = Array.isArray(suffixes) ? suffixes : [suffixes];
+    for (const suffix of list) {
+      const match = Object.keys(hass.states).find(
+        (id) => id.startsWith("sensor.") && id.endsWith(suffix)
+      );
+      if (match) return match;
+    }
+    return "";
+  }
+
+  // ---------------------------------------------------------------------
+  // Éditeur visuel de configuration (partagé par les 4 cartes)
+  //
+  // Utilise le composant HA `ha-form`, déjà chargé par le frontend HA
+  // (pas besoin de l'importer), pour éviter de coder un éditeur "à la
+  // main" pour chaque option. `getConfigElement`/`getStubConfig` sur
+  // chaque carte sont le contrat standard attendu par Lovelace pour
+  // proposer l'édition visuelle plutôt que forcer l'édition YAML.
+  // ---------------------------------------------------------------------
+
+  const FIELD_LABELS = {
+    entity: "Entité",
+    title: "Titre (optionnel)",
+    display_header: "Afficher l'en-tête",
+    display_teacher: "Afficher le(s) professeur(s)",
+    display_classroom: "Afficher la salle",
+    dim_ended_lessons: "Estomper les cours terminés",
+    display_day_hours: "Afficher les horaires",
+    display_done_homework: "Afficher les devoirs déjà faits",
+    reduce_done_homework: "Réduire l'affichage des devoirs faits",
+    max_items: "Nombre maximum d'éléments",
+    display_date: "Afficher la date",
+    display_coefficient: "Afficher le coefficient",
+    display_class_average: "Afficher la moyenne de classe",
+    display_comment: "Afficher le commentaire",
+  };
+
+  function computeFieldLabel(schema) {
+    return FIELD_LABELS[schema.name] || schema.name;
+  }
+
+  function createConfigEditor(schema) {
+    return class extends HTMLElement {
+      setConfig(config) {
+        this._config = config || {};
+        this._render();
+      }
+
+      set hass(hass) {
+        this._hass = hass;
+        this._render();
+      }
+
+      connectedCallback() {
+        this._render();
+      }
+
+      _render() {
+        if (!this._hass || !this._config) return;
+        if (!this._form) {
+          this._form = document.createElement("ha-form");
+          this._form.addEventListener("value-changed", (ev) => {
+            ev.stopPropagation();
+            this._config = ev.detail.value;
+            this.dispatchEvent(
+              new CustomEvent("config-changed", {
+                detail: { config: this._config },
+                bubbles: true,
+                composed: true,
+              })
+            );
+          });
+          this.appendChild(this._form);
+        }
+        this._form.hass = this._hass;
+        this._form.schema = schema;
+        this._form.data = this._config;
+        this._form.computeLabel = computeFieldLabel;
+      }
+    };
+  }
+
+  const ENTITY_FIELD = { name: "entity", required: true, selector: { entity: { domain: "sensor" } } };
+  const TITLE_FIELD = { name: "title", selector: { text: {} } };
+  const MAX_ITEMS_FIELD = { name: "max_items", selector: { number: { mode: "box", min: 1, max: 100 } } };
+  const boolField = (name) => ({ name, selector: { boolean: {} } });
+
   // ---------------------------------------------------------------------
   // skolengo-timetable-card
   // ---------------------------------------------------------------------
@@ -351,8 +440,28 @@
 
       this.shadowRoot.innerHTML = cardWrapper(html);
     }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-timetable-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findEntityBySuffix(hass, "_timetable_next_day") };
+    }
   }
   customElements.define("skolengo-timetable-card", SkolengoTimetableCard);
+  customElements.define(
+    "skolengo-timetable-card-editor",
+    createConfigEditor([
+      ENTITY_FIELD,
+      TITLE_FIELD,
+      boolField("display_header"),
+      boolField("display_teacher"),
+      boolField("display_classroom"),
+      boolField("dim_ended_lessons"),
+      boolField("display_day_hours"),
+    ])
+  );
 
   // ---------------------------------------------------------------------
   // skolengo-homework-card
@@ -457,8 +566,27 @@
 
       this.shadowRoot.innerHTML = cardWrapper(html);
     }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-homework-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findEntityBySuffix(hass, "_homework_due") };
+    }
   }
   customElements.define("skolengo-homework-card", SkolengoHomeworkCard);
+  customElements.define(
+    "skolengo-homework-card-editor",
+    createConfigEditor([
+      ENTITY_FIELD,
+      TITLE_FIELD,
+      boolField("display_header"),
+      boolField("display_done_homework"),
+      boolField("reduce_done_homework"),
+      MAX_ITEMS_FIELD,
+    ])
+  );
 
   // ---------------------------------------------------------------------
   // skolengo-evaluations-card ("Notes")
@@ -571,8 +699,28 @@
 
       this.shadowRoot.innerHTML = cardWrapper(html);
     }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-evaluations-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findEntityBySuffix(hass, "_average_grade"), title: "Notes" };
+    }
   }
   customElements.define("skolengo-evaluations-card", SkolengoEvaluationsCard);
+  customElements.define(
+    "skolengo-evaluations-card-editor",
+    createConfigEditor([
+      ENTITY_FIELD,
+      TITLE_FIELD,
+      boolField("display_header"),
+      boolField("display_date"),
+      boolField("display_coefficient"),
+      boolField("display_class_average"),
+      MAX_ITEMS_FIELD,
+    ])
+  );
 
   // ---------------------------------------------------------------------
   // skolengo-absences-card
@@ -695,8 +843,20 @@
 
       this.shadowRoot.innerHTML = cardWrapper(html);
     }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-absences-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findEntityBySuffix(hass, ["_absences", "_delays", "_exemptions"]) };
+    }
   }
   customElements.define("skolengo-absences-card", SkolengoAbsencesCard);
+  customElements.define(
+    "skolengo-absences-card-editor",
+    createConfigEditor([ENTITY_FIELD, TITLE_FIELD, boolField("display_header"), boolField("display_comment"), MAX_ITEMS_FIELD])
+  );
 
   // ---------------------------------------------------------------------
   // Enregistrement dans le sélecteur de cartes Lovelace
