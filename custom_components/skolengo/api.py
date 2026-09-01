@@ -773,8 +773,27 @@ class SkolengoClient:
         return jsonapi_deserialize(doc) or []
 
     def get_evaluations(self, student_id: str, period_id: str | None = None) -> list[dict[str, Any]]:
-        """Best-effort: some schools return errors for this endpoint."""
-        params: dict[str, Any] = {"filter[student.id]": student_id}
+        """Best-effort: some schools return errors for this endpoint.
+
+        Without an explicit `include`/`fields[...]`, Skolengo's JSON:API
+        only returns bare {type, id} linkage for relationships and may
+        omit attributes entirely -- notably `average`/`studentAverage`
+        (the school's own officially-computed, coefficient-weighted
+        subject average) on `evaluationService`, which is what we want to
+        show rather than a naively-averaged mean of individual marks.
+        """
+        params: dict[str, Any] = {
+            "filter[student.id]": student_id,
+            "include": (
+                "subject,teachers,evaluations,"
+                "evaluations.evaluationResult,"
+                "evaluations.evaluationResult.subSkillsEvaluationResults,"
+                "evaluations.evaluationResult.subSkillsEvaluationResults.subSkill,"
+                "evaluations.subSkills"
+            ),
+            "fields[evaluationService]": "coefficient,average,studentAverage,scale,subject,teachers",
+            "fields[evaluation]": "title,topic,dateTime,coefficient,average,scale,evaluationResult",
+        }
         if period_id:
             params["filter[period.id]"] = period_id
         try:

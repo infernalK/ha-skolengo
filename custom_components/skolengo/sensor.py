@@ -458,8 +458,21 @@ def _evaluation_list(evaluation_services: list[dict]) -> list[dict]:
     items: list[dict] = []
     for evaluation_service in evaluation_services:
         subject = evaluation_service.get("subject") or {}
+        subject_student_average = evaluation_service.get("studentAverage")
+        subject_class_average = evaluation_service.get("average")
+        subject_coefficient = evaluation_service.get("coefficient")
         for evaluation in evaluation_service.get("evaluations") or []:
-            results = evaluation.get("evaluationResults") or []
+            # The API doc names this relationship "evaluationResult"
+            # (singular), but it can still resolve to a list of result
+            # records -- normalize either shape.
+            result_data = evaluation.get("evaluationResult")
+            if result_data is None:
+                results = evaluation.get("evaluationResults") or []
+            elif isinstance(result_data, list):
+                results = result_data
+            else:
+                results = [result_data]
+
             mark = None
             skills = []
             for result in results:
@@ -484,19 +497,52 @@ def _evaluation_list(evaluation_services: list[dict]) -> list[dict]:
                     "coefficient": evaluation.get("coefficient"),
                     "class_average": evaluation.get("average"),
                     "skills": skills,
+                    # Skolengo's own officially-computed average for this
+                    # subject over the period (coefficient-weighted by the
+                    # school, not by us) -- see _official_average() below.
+                    "subject_student_average": subject_student_average,
+                    "subject_class_average": subject_class_average,
+                    "subject_coefficient": subject_coefficient,
                 }
             )
     return items
 
 
 def _average_mark(items: list[dict]) -> float | None:
-    """Average of the numeric `mark`s in a flattened evaluation list
-    (skill-based evaluations, which have no `mark`, are excluded).
+    """Naive average of the numeric `mark`s in a flattened evaluation
+    list (skill-based evaluations, which have no `mark`, are excluded).
+
+    This treats every mark as equally weighted, which is NOT how a real
+    school average works (a 5-point quiz and a 20-point exam don't count
+    the same). Only used as a fallback when Skolengo doesn't return a
+    `studentAverage` at all -- see _official_average(), which should
+    always be preferred when available.
     """
     grades = [item["mark"] for item in items if item["mark"] is not None]
     if not grades:
         return None
     return round(sum(grades) / len(grades), 2)
+
+
+def _official_average(evaluation_services: list[dict]) -> float | None:
+    """Skolengo's own coefficient-weighted average across subjects,
+    built from each `evaluationService.studentAverage` -- the real,
+    official average, as opposed to `_average_mark()`'s naive mean of
+    individual marks.
+    """
+    weighted_sum = 0.0
+    total_coefficient = 0.0
+    for service in evaluation_services:
+        avg = service.get("studentAverage")
+        if not isinstance(avg, (int, float)):
+            continue
+        coefficient = service.get("coefficient")
+        coefficient = float(coefficient) if isinstance(coefficient, (int, float)) and coefficient > 0 else 1.0
+        weighted_sum += float(avg) * coefficient
+        total_coefficient += coefficient
+    if total_coefficient == 0:
+        return None
+    return round(weighted_sum / total_coefficient, 2)
 
 
 class SkolengoEvaluationsSensor(SkolengoSensorBase):
@@ -527,13 +573,20 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
     @property
     def extra_state_attributes(self) -> dict:
         items = self._items()
-        return {"evaluations": items[:30], "average": _average_mark(items)}
+        official = _official_average(self._evaluations)
+        return {
+            "evaluations": items[:30],
+            "average": official if official is not None else _average_mark(items),
+        }
 
 
 class SkolengoAverageGradeSensor(SkolengoSensorBase):
-    """Best-effort overall average grade (numeric marks only -- a
-    skill-based evaluation has no single "average" to fold in).
+    """Overall average grade.
 
+    Prefers Skolengo's own officially-computed, coefficient-weighted
+    average (`evaluationService.studentAverage`, see
+    `_official_average()`); falls back to a naive mean of individual
+    marks only if the school's API doesn't populate that field at all.
     Same value as the "Notes" sensor's `average` attribute, exposed here
     as its own entity for history graphing / automations. Some schools'
     grade endpoints are known to be flaky or unsupported by Skolengo for
@@ -549,4 +602,7 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
 
     @property
     def native_value(self) -> float | None:
+        official = _official_average(self._evaluations)
+        if official is not None:
+            return official
         return _average_mark(_evaluation_list(self._evaluations))
