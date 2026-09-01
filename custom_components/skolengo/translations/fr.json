@@ -63,6 +63,7 @@
   },
   "entity": {
     "sensor": {
+      "student_class": { "name": "Classe" },
       "next_lesson": { "name": "Prochain cours" },
       "next_alarm": { "name": "Prochain réveil" },
       "timetable_next_day": { "name": "Emploi du temps (jour suivant)" },

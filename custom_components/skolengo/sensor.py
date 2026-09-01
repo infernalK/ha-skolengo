@@ -19,6 +19,7 @@ async def async_setup_entry(
     coordinator: SkolengoDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
+            SkolengoStudentClassSensor(coordinator, entry),
             SkolengoNextLessonSensor(coordinator, entry),
             SkolengoNextAlarmSensor(coordinator, entry),
             SkolengoTimetableNextDaySensor(coordinator, entry),
@@ -68,6 +69,37 @@ class SkolengoSensorBase(CoordinatorEntity[SkolengoDataUpdateCoordinator], Senso
     @property
     def _evaluations(self) -> list[dict]:
         return self.coordinator.data.evaluations if self.coordinator.data else []
+
+    @property
+    def _student_info(self) -> dict:
+        return self.coordinator.data.student_info if self.coordinator.data else {}
+
+
+class SkolengoStudentClassSensor(SkolengoSensorBase):
+    """The student's class (e.g. "4EG2"), with a few other profile details
+    as attributes. Refreshed on every coordinator update, so it follows a
+    mid-year class change without needing to reconfigure the integration.
+    """
+
+    _attr_icon = "mdi:account-school-outline"
+    _attr_translation_key = "student_class"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "student_class", "Classe")
+
+    @property
+    def native_value(self) -> str | None:
+        return self._student_info.get("className")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        info = self._student_info
+        school = info.get("school") or {}
+        return {
+            "date_of_birth": info.get("dateOfBirth"),
+            "regime": info.get("regime"),
+            "school": school.get("name"),
+        }
 
 
 class SkolengoNextLessonSensor(SkolengoSensorBase):

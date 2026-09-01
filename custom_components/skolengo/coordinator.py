@@ -40,6 +40,7 @@ class SkolengoData:
     evaluations: list[dict] = field(default_factory=list)
     student_name: str = ""
     next_alarm: datetime | None = None
+    student_info: dict = field(default_factory=dict)
 
 
 class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
@@ -152,12 +153,20 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
             next_alarm = _compute_next_alarm(lessons, alarm_offset)
 
+            student_info: dict = {}
+            try:
+                user_info = client.get_user_info(self.user_id)
+                student_info = _find_student_info(user_info, self.student_id)
+            except SkolengoApiError as err:
+                _LOGGER.debug("Unable to fetch student info (non-fatal): %s", err)
+
             return SkolengoData(
                 lessons=lessons,
                 homework=homework,
                 absences=absences,
                 evaluations=evaluations,
                 next_alarm=next_alarm,
+                student_info=student_info,
             )
 
         try:
@@ -170,6 +179,21 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         self._async_persist_refresh_token()
         return data
+
+
+def _find_student_info(user_info: dict, student_id: str) -> dict:
+    """Locate this student's record within a `getUserInfo()` response.
+
+    For a legal-representative (parent) account, the student is one entry
+    of the `students` relationship; for a student account logging in
+    directly, `user_info` itself already *is* the student.
+    """
+    for student in user_info.get("students") or []:
+        if student.get("id") == student_id:
+            return student
+    if user_info.get("id") == student_id or not user_info.get("students"):
+        return user_info
+    return {}
 
 
 def _compute_next_alarm(lessons: list[dict], offset_minutes: int) -> datetime | None:
