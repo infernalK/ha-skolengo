@@ -21,6 +21,7 @@ async def async_setup_entry(
         [
             SkolengoNextLessonSensor(coordinator, entry),
             SkolengoNextAlarmSensor(coordinator, entry),
+            SkolengoTimetableNextDaySensor(coordinator, entry),
             SkolengoTodayLessonCountSensor(coordinator, entry),
             SkolengoHomeworkDueSensor(coordinator, entry),
             SkolengoAbsencesSensor(coordinator, entry),
@@ -132,6 +133,84 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
         return self.coordinator.data.next_alarm if self.coordinator.data else None
 
 
+class SkolengoTimetableNextDaySensor(SkolengoSensorBase):
+    """Full schedule for the "next" school day: today's remaining lessons
+    if the day isn't over yet, otherwise the next day that has lessons.
+
+    Exists so the bundled `skolengo-timetable-card` can render a day's
+    timetable without talking to the Calendar API.
+    """
+
+    _attr_icon = "mdi:timetable"
+    _attr_native_unit_of_measurement = "cours"
+    _attr_translation_key = "timetable_next_day"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "timetable_next_day", "Emploi du temps (jour suivant)")
+
+    @property
+    def native_value(self) -> int:
+        return len(self._day_lessons())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        lessons = self._day_lessons()
+        day = self._chosen_day()
+        return {
+            "day": day.isoformat() if day else None,
+            "lessons": [
+                {
+                    "id": lesson.get("id"),
+                    "subject": (lesson.get("subject") or {}).get("label") or lesson.get("title"),
+                    "subject_color": (lesson.get("subject") or {}).get("color"),
+                    "start": lesson.get("startDateTime"),
+                    "end": lesson.get("endDateTime"),
+                    "location": lesson.get("location") or lesson.get("room"),
+                    "canceled": bool(lesson.get("canceled")),
+                    "teachers": [
+                        f"{t.get('firstName', '')} {t.get('lastName', '')}".strip()
+                        for t in (lesson.get("teachers") or [])
+                    ],
+                }
+                for lesson in lessons
+            ],
+        }
+
+    def _lessons_by_day(self) -> dict:
+        by_day: dict = {}
+        for lesson in self._lessons:
+            start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
+            if not start:
+                continue
+            start = dt_util.as_local(start)
+            by_day.setdefault(start.date(), []).append(lesson)
+        return by_day
+
+    def _chosen_day(self):
+        now = dt_util.now()
+        by_day = self._lessons_by_day()
+        for day in sorted(by_day):
+            if day < now.date():
+                continue
+            if day == now.date():
+                has_remaining = any(
+                    (dt_util.as_local(dt_util.parse_datetime(lesson["startDateTime"])) >= now)
+                    for lesson in by_day[day]
+                    if lesson.get("startDateTime") and not lesson.get("canceled")
+                )
+                if not has_remaining:
+                    continue
+            return day
+        return None
+
+    def _day_lessons(self) -> list[dict]:
+        day = self._chosen_day()
+        if day is None:
+            return []
+        lessons = self._lessons_by_day().get(day, [])
+        return sorted(lessons, key=lambda lesson: lesson.get("startDateTime") or "")
+
+
 class SkolengoTodayLessonCountSensor(SkolengoSensorBase):
     """Number of lessons scheduled today."""
 
@@ -171,15 +250,26 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        pending = [hw for hw in self._homework if not hw.get("done")]
+        def _serialize(hw: dict) -> dict:
+            subject = hw.get("subject") or {}
+            teacher = hw.get("teacher") or {}
+            return {
+                "id": hw.get("id"),
+                "subject": subject.get("label"),
+                "subject_color": subject.get("color"),
+                "due_date": hw.get("dueDate") or hw.get("dueDateTime"),
+                "done": bool(hw.get("done")),
+                "title": hw.get("title"),
+                "html": hw.get("html"),
+                "teacher": f"{teacher.get('firstName', '')} {teacher.get('lastName', '')}".strip() or None,
+            }
+
+        homework_sorted = sorted(
+            self._homework, key=lambda hw: hw.get("dueDate") or hw.get("dueDateTime") or ""
+        )
         return {
-            "assignments": [
-                {
-                    "subject": (hw.get("subject") or {}).get("label"),
-                    "due_date": hw.get("dueDate"),
-                }
-                for hw in pending[:20]
-            ]
+            "assignments": [_serialize(hw) for hw in homework_sorted if not hw.get("done")][:30],
+            "done_assignments": [_serialize(hw) for hw in homework_sorted if hw.get("done")][:30],
         }
 
 
@@ -196,6 +286,22 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
     @property
     def native_value(self) -> int:
         return len(self._absences)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        def _serialize(absence: dict) -> dict:
+            state = absence.get("currentState") or {}
+            reason = state.get("absenceReason") or {}
+            return {
+                "id": absence.get("id"),
+                "start": absence.get("startDateTime") or absence.get("startDate"),
+                "end": absence.get("endDateTime") or absence.get("endDate"),
+                "reason": reason.get("label"),
+                "justified": state.get("justified"),
+                "comment": state.get("comment"),
+            }
+
+        return {"absences": [_serialize(a) for a in self._absences[:30]]}
 
 
 class SkolengoAverageGradeSensor(SkolengoSensorBase):
@@ -214,13 +320,55 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
 
     @property
     def native_value(self) -> float | None:
-        grades: list[float] = []
-        for evaluation_service in self._evaluations:
-            for evaluation in evaluation_service.get("evaluations") or []:
-                for result in evaluation.get("evaluationResults") or []:
-                    value = result.get("nonEvaluated") is not True and result.get("value")
-                    if isinstance(value, (int, float)):
-                        grades.append(float(value))
+        grades = [item["mark"] for item in self._evaluation_list() if item["mark"] is not None]
         if not grades:
             return None
         return round(sum(grades) / len(grades), 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        items = self._evaluation_list()
+        items.sort(key=lambda item: item["date"] or "", reverse=True)
+        return {"evaluations": items[:30]}
+
+    def _evaluation_list(self) -> list[dict]:
+        """Flatten evaluation-services -> evaluations into one list.
+
+        Skolengo doesn't separate "grades" (numeric) from "evaluations"
+        (skill-based) the way Pronote does: a single `evaluation` resource
+        can carry either a numeric `mark` or a set of skill levels,
+        depending on the school's grading system, so both are surfaced
+        here under one unified list.
+        """
+        items: list[dict] = []
+        for evaluation_service in self._evaluations:
+            subject = evaluation_service.get("subject") or {}
+            for evaluation in evaluation_service.get("evaluations") or []:
+                results = evaluation.get("evaluationResults") or []
+                mark = None
+                skills = []
+                for result in results:
+                    if result.get("nonEvaluated") is not True and isinstance(
+                        result.get("value"), (int, float)
+                    ):
+                        mark = float(result["value"])
+                    for skill_result in result.get("subSkillsEvaluationResults") or []:
+                        level = skill_result.get("level")
+                        skill = (skill_result.get("subSkill") or {}).get("shortLabel")
+                        if level or skill:
+                            skills.append({"skill": skill, "level": level})
+                items.append(
+                    {
+                        "id": evaluation.get("id"),
+                        "subject": subject.get("label"),
+                        "subject_color": subject.get("color"),
+                        "title": evaluation.get("title") or evaluation.get("topic"),
+                        "date": evaluation.get("dateTime"),
+                        "mark": mark,
+                        "scale": evaluation.get("scale"),
+                        "coefficient": evaluation.get("coefficient"),
+                        "class_average": evaluation.get("average"),
+                        "skills": skills,
+                    }
+                )
+        return items
