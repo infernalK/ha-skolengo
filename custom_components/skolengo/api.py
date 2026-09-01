@@ -31,7 +31,7 @@ _LOGGER = logging.getLogger(__name__)
 OID_CLIENT_ID = base64.b64decode(OID_CLIENT_ID_B64).decode()
 OID_CLIENT_SECRET = base64.b64decode(OID_CLIENT_SECRET_B64).decode()
 
-MAX_REDIRECT_HOPS = 15
+MAX_REDIRECT_HOPS = 30
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0 Mobile Safari/537.36 SkoApp/HomeAssistant"
@@ -408,6 +408,23 @@ class SkolengoClient:
                 if input_type == "checkbox" and not input_tag.get("checked"):
                     continue
                 form_data[name] = value or "on"
+
+        # Some login pages (e.g. Éduconnect) use <button name="..."> rather
+        # than <input type="submit" name="...">  for their submit control.
+        # Browsers include a clicked submit <button>'s name/value in the
+        # form payload; since we can't "click" one, include the first named
+        # submit button found — omitting it entirely causes some servers to
+        # silently ignore the submission instead of validating credentials.
+        submit_button_included = False
+        for button_tag in form.find_all("button"):
+            name = button_tag.get("name")
+            if not name or submit_button_included:
+                continue
+            button_type = (button_tag.get("type") or "submit").lower()
+            if button_type != "submit":
+                continue
+            form_data[name] = button_tag.get("value") or ""
+            submit_button_included = True
 
         # Some establishments (typically public schools using the national
         # Éduconnect / academic SSO federation) present a "Where Are You
