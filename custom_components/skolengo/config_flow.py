@@ -128,7 +128,8 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_info = await self.hass.async_add_executor_job(
                     self._client.get_user_info, user_id
                 )
-            except SkolengoAuthError:
+            except SkolengoAuthError as err:
+                _LOGGER.warning("Skolengo login failed: %s", err)
                 errors["base"] = "invalid_auth"
             except SkolengoApiError:
                 errors["base"] = "cannot_connect"
@@ -265,7 +266,8 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._username,
                     self._password,
                 )
-            except SkolengoAuthError:
+            except SkolengoAuthError as err:
+                _LOGGER.warning("Skolengo login failed: %s", err)
                 errors["base"] = "invalid_auth"
             except SkolengoApiError:
                 errors["base"] = "cannot_connect"
