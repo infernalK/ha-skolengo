@@ -17,6 +17,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Nombre de devoirs à faire
   - Nombre d'absences enregistrées
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
+- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
 
@@ -52,7 +53,66 @@ Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'in
 
 - **Connexion** : Skolengo ne propose pas de mécanisme de connexion générique documenté. L'authentification implémentée ici "scrape" (analyse) génériquement la page de connexion CAS/SSO de votre établissement (recherche des champs identifiant/mot de passe usuels). Cette approche fonctionne pour de nombreux établissements, mais certains ENT régionaux utilisent des parcours de connexion multi-étapes ou non standards qui ne seront pas reconnus automatiquement. Si la connexion échoue avec une erreur "Identifiants incorrects ou formulaire de connexion non pris en charge", merci d'ouvrir une [issue GitHub](https://github.com/infernalK/ha-skolengo/issues) en décrivant votre établissement (sans jamais partager vos identifiants ni mot de passe).
 - **Notes et absences** : les endpoints évaluations/notes et absences sont connus pour être instables ou indisponibles selon les établissements dans l'API Skolengo elle-même (pas seulement dans cette intégration) — par exemple une erreur serveur 500 sur `/absence-files` a déjà été observée sur un établissement, indépendante de cette intégration. Les capteurs correspondants peuvent donc rester à `inconnu` pour votre établissement — ce n'est pas nécessairement un bug de l'intégration.
-- Cette intégration ne propose pas d'envoi de notifications, de liste de tâches (todo), ni de carte Lovelace dédiée : elle se concentre sur l'exposition des données via calendriers et capteurs, que vous pouvez ensuite combiner librement avec les automatisations et cartes standard de Home Assistant.
+- Cette intégration ne propose pas d'envoi de notifications ni de liste de tâches (todo) : elle se concentre sur l'exposition des données via calendriers, capteurs et les cartes Lovelace décrites ci-dessous, que vous pouvez ensuite combiner librement avec vos propres automatisations et cartes standard de Home Assistant.
+
+## Cartes Lovelace intégrées
+
+Cette intégration embarque 4 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
+
+Contrairement à Pronote, Skolengo ne distingue pas notes numériques / moyennes / évaluations de compétences (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. Le périmètre est donc volontairement de **4 cartes** (au lieu de 7) : pas de carte "moyennes", pas de carte "évaluations" séparée de la carte "notes", pas de carte "retards".
+
+Elles sont **chargées automatiquement** dès que l'intégration est configurée : aucune ressource Lovelace à ajouter manuellement (`skolengo-cards.js` est servi par l'intégration elle-même et enregistré comme module JS au démarrage de Home Assistant).
+
+### `skolengo-timetable-card`
+
+Emploi du temps du jour (ou du prochain jour d'école s'il n'y a plus de cours aujourd'hui), à associer à un capteur `..._timetable_next_day`.
+
+```yaml
+type: custom:skolengo-timetable-card
+entity: sensor.skolengo_..._timetable_next_day
+display_teacher: true
+dim_ended_lessons: true
+```
+
+### `skolengo-homework-card`
+
+Devoirs à faire, à associer à un capteur `..._homework_due`.
+
+```yaml
+type: custom:skolengo-homework-card
+entity: sensor.skolengo_..._homework_due
+display_done_homework: true
+max_items: 15
+```
+
+### `skolengo-evaluations-card`
+
+Notes et évaluations de compétences ("Notes"), à associer à un capteur `..._average_grade`.
+
+```yaml
+type: custom:skolengo-evaluations-card
+entity: sensor.skolengo_..._average_grade
+title: Notes
+display_class_average: true
+```
+
+### `skolengo-absences-card`
+
+Absences enregistrées, à associer à un capteur `..._absences`. Skolengo remonte en réalité un seul journal "vie scolaire" (absences, retards, dispenses) : cette même carte fonctionne donc aussi telle quelle pointée sur `..._delays` (retards) ou `..._exemptions` (dispenses, capteur désactivé par défaut), sans qu'il soit nécessaire d'utiliser une carte différente.
+
+```yaml
+type: custom:skolengo-absences-card
+entity: sensor.skolengo_..._absences
+display_comment: true
+```
+
+```yaml
+type: custom:skolengo-absences-card
+entity: sensor.skolengo_..._delays
+title: Retards
+```
+
+**Note** : les "observations", punitions et sanctions visibles sur le portail web complet de Skolengo (rubrique "Vie scolaire") ne sont couvertes par aucun endpoint exposé par l'API utilisée ici (celle de l'application mobile, `api.skolengo.com`) — elles ne semblent accessibles que via les pages web propres à l'ENT Kosmos de l'établissement. Les cartes absences/retards/dispenses représentent donc la couverture maximale possible actuellement pour la "vie scolaire", pas une limitation volontaire.
 
 ## Signaler un problème
 

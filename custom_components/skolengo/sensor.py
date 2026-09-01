@@ -25,6 +25,8 @@ async def async_setup_entry(
             SkolengoTodayLessonCountSensor(coordinator, entry),
             SkolengoHomeworkDueSensor(coordinator, entry),
             SkolengoAbsencesSensor(coordinator, entry),
+            SkolengoDelaysSensor(coordinator, entry),
+            SkolengoExemptionsSensor(coordinator, entry),
             SkolengoAverageGradeSensor(coordinator, entry),
         ]
     )
@@ -273,8 +275,43 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
         }
 
 
+def _serialize_absence_file(absence: dict) -> dict:
+    """Flatten one Skolengo `/absence-files` record.
+
+    The real field names (confirmed against the reference API client's
+    TypeScript models, since Skolengo's own docs don't cover this) live
+    under `currentState`: `absenceType` (one of ABSENCE / LATENESS /
+    EXEMPTION / DEPARTURE), `absenceStartDateTime`, `absenceEndDateTime`,
+    `absenceFileStatus` (NEW / IN_PROGRESS / LOCKED / ...), `comment`, and
+    `absenceReason.longLabel`/`.code`.
+    """
+    state = absence.get("currentState") or {}
+    reason = state.get("absenceReason") or {}
+    return {
+        "id": absence.get("id"),
+        "type": state.get("absenceType"),
+        "start": state.get("absenceStartDateTime"),
+        "end": state.get("absenceEndDateTime"),
+        "status": state.get("absenceFileStatus"),
+        "reason": reason.get("longLabel"),
+        "reason_code": reason.get("code"),
+        "comment": state.get("comment"),
+    }
+
+
 class SkolengoAbsencesSensor(SkolengoSensorBase):
-    """Number of recorded absence files."""
+    """Number of recorded absences (`absenceType` == ABSENCE).
+
+    Skolengo's `/absence-files` endpoint is actually a unified "vie
+    scolaire" log covering absences, lateness ("retards") and exemptions
+    ("dispenses") -- see `SkolengoDelaysSensor` and
+    `SkolengoExemptionsSensor` below, which read the same underlying data
+    filtered by type. Note: "observations", "punitions" and "sanctions"
+    (visible on the full Skolengo web portal) are NOT covered by this
+    endpoint and don't appear to be exposed by the API this integration
+    uses at all -- they may only exist through the school's separate
+    Kosmos ENT web pages, not the mobile-app API this integration talks to.
+    """
 
     _attr_icon = "mdi:account-off-outline"
     _attr_native_unit_of_measurement = "absences"
@@ -283,25 +320,61 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "absences", "Absences")
 
+    def _filtered(self) -> list[dict]:
+        return [a for a in self._absences if (a.get("currentState") or {}).get("absenceType") == "ABSENCE"]
+
     @property
     def native_value(self) -> int:
-        return len(self._absences)
+        return len(self._filtered())
 
     @property
     def extra_state_attributes(self) -> dict:
-        def _serialize(absence: dict) -> dict:
-            state = absence.get("currentState") or {}
-            reason = state.get("absenceReason") or {}
-            return {
-                "id": absence.get("id"),
-                "start": absence.get("startDateTime") or absence.get("startDate"),
-                "end": absence.get("endDateTime") or absence.get("endDate"),
-                "reason": reason.get("label"),
-                "justified": state.get("justified"),
-                "comment": state.get("comment"),
-            }
+        return {"absences": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
 
-        return {"absences": [_serialize(a) for a in self._absences[:30]]}
+
+class SkolengoDelaysSensor(SkolengoSensorBase):
+    """Number of recorded lateness ("retards") records."""
+
+    _attr_icon = "mdi:clock-alert-outline"
+    _attr_native_unit_of_measurement = "retards"
+    _attr_translation_key = "delays"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "delays", "Retards")
+
+    def _filtered(self) -> list[dict]:
+        return [a for a in self._absences if (a.get("currentState") or {}).get("absenceType") == "LATENESS"]
+
+    @property
+    def native_value(self) -> int:
+        return len(self._filtered())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"delays": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
+
+
+class SkolengoExemptionsSensor(SkolengoSensorBase):
+    """Number of recorded exemptions ("dispenses", e.g. from PE)."""
+
+    _attr_icon = "mdi:hand-back-right-off-outline"
+    _attr_native_unit_of_measurement = "dispenses"
+    _attr_translation_key = "exemptions"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "exemptions", "Dispenses")
+
+    def _filtered(self) -> list[dict]:
+        return [a for a in self._absences if (a.get("currentState") or {}).get("absenceType") == "EXEMPTION"]
+
+    @property
+    def native_value(self) -> int:
+        return len(self._filtered())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"exemptions": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
 
 
 class SkolengoAverageGradeSensor(SkolengoSensorBase):

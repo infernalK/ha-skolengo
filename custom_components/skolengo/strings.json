@@ -69,6 +69,8 @@
       "today_lesson_count": { "name": "Cours aujourd'hui" },
       "homework_due": { "name": "Devoirs à faire" },
       "absences": { "name": "Absences" },
+      "delays": { "name": "Retards" },
+      "exemptions": { "name": "Dispenses" },
       "average_grade": { "name": "Moyenne générale" }
     },
     "calendar": {
