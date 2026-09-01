@@ -369,10 +369,12 @@ class SkolengoClient:
 
         action = form.get("action") or page_url
         post_url = urljoin(page_url, action)
+        method = (form.get("method") or "get").strip().lower()
 
         form_data: dict[str, str] = {}
         username_field = None
         password_field = None
+        radio_groups: dict[str, list[tuple[Any, str]]] = {}
 
         for input_tag in form.find_all("input"):
             name = input_tag.get("name")
@@ -383,6 +385,12 @@ class SkolengoClient:
 
             if input_type == "hidden":
                 form_data[name] = value
+                continue
+
+            if input_type == "radio":
+                radio_groups.setdefault(name, []).append((input_tag, value))
+                if input_tag.get("checked"):
+                    form_data[name] = value
                 continue
 
             lower_name = name.lower()
@@ -396,19 +404,32 @@ class SkolengoClient:
                 continue
             # Any other visible input (e.g. a submit button with a name) gets
             # its default value carried through.
-            if input_type in ("submit", "checkbox", "radio"):
-                if input_type != "submit" and not input_tag.get("checked"):
+            if input_type in ("submit", "checkbox"):
+                if input_type == "checkbox" and not input_tag.get("checked"):
                     continue
                 form_data[name] = value or "on"
 
+        # Some establishments (typically public schools using the national
+        # Éduconnect / academic SSO federation) present a "Where Are You
+        # From" identity-provider picker before the real login page: a set
+        # of radio buttons ("Élève ou parent", "Personnel", ...) with no
+        # username/password field of their own. Best-effort default to the
+        # "student/parent" option, since that's what the vast majority of
+        # Home Assistant users authenticating here will be.
+        if not username_field and not password_field:
+            for group_name, options in radio_groups.items():
+                if group_name in form_data:
+                    continue  # already had a `checked` option
+                choice = cls._pick_wayf_radio_option(options)
+                if choice is not None:
+                    form_data[group_name] = choice
+
         if not username_field or not password_field:
             if allow_relay:
-                # Likely an auto-submitting relay/continue form (e.g. SAML
-                # POST binding) rather than the actual login page.
-                try:
-                    resp = session.post(post_url, data=form_data, timeout=20, allow_redirects=False)
-                except requests.RequestException as err:
-                    raise SkolengoAuthError(f"Relay form submission failed: {err}") from err
+                # Likely a WAYF picker (handled above) or an auto-submitting
+                # relay/continue form (e.g. SAML POST binding) rather than
+                # the actual login page.
+                resp = cls._submit_form(session, post_url, method, form_data)
                 return resp, False
             raise SkolengoAuthError(
                 "Impossible d'identifier les champs identifiant/mot de passe du "
@@ -418,11 +439,54 @@ class SkolengoClient:
         form_data[username_field] = username
         form_data[password_field] = password
 
-        try:
-            resp = session.post(post_url, data=form_data, timeout=20, allow_redirects=False)
-        except requests.RequestException as err:
-            raise SkolengoAuthError(f"Login form submission failed: {err}") from err
+        resp = cls._submit_form(session, post_url, method, form_data)
         return resp, True
+
+    @staticmethod
+    def _submit_form(
+        session: requests.Session, url: str, method: str, form_data: dict[str, str]
+    ) -> requests.Response:
+        try:
+            if method == "get":
+                return session.get(url, params=form_data, timeout=20, allow_redirects=False)
+            return session.post(url, data=form_data, timeout=20, allow_redirects=False)
+        except requests.RequestException as err:
+            raise SkolengoAuthError(f"Form submission failed: {err}") from err
+
+    # Keywords (matched against the radio's <label>, id or value) used to
+    # pick the most likely "I'm a student/parent" option on a WAYF-style
+    # identity-provider picker.
+    _WAYF_PREFERRED_KEYWORDS = ("eleve", "élève", "parent", "educonnect", "éduconnect", "famille")
+
+    @staticmethod
+    def _pick_wayf_radio_option(options: list[tuple[Any, str]]) -> str | None:
+        if not options:
+            return None
+
+        def option_text(input_tag: Any) -> str:
+            parts = [input_tag.get("id") or "", input_tag.get("value") or ""]
+            input_id = input_tag.get("id")
+            if input_id:
+                label = input_tag.find_parent().find("label", attrs={"for": input_id}) if input_tag.find_parent() else None
+                if label is None:
+                    # Search the whole document as a fallback (label may not
+                    # be a sibling of the radio input).
+                    root = input_tag
+                    while root.parent is not None:
+                        root = root.parent
+                    label = root.find("label", attrs={"for": input_id})
+                if label is not None:
+                    parts.append(label.get_text())
+            return " ".join(parts).lower()
+
+        for input_tag, value in options:
+            text = option_text(input_tag)
+            if any(keyword in text for keyword in SkolengoClient._WAYF_PREFERRED_KEYWORDS):
+                return value
+
+        # No confident match: fall back to the first listed option rather
+        # than failing outright.
+        return options[0][1]
 
     @classmethod
     def _walk_redirect_chain(
