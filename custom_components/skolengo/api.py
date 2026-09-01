@@ -704,7 +704,18 @@ class SkolengoClient:
     # Endpoints
     # ------------------------------------------------------------------
     def get_user_info(self, user_id: str) -> dict[str, Any]:
-        doc = self._request("GET", f"/users-info/{user_id}")
+        # `include` is required for JSON:API to resolve the `students`
+        # relationship (a legal representative/parent account) into full
+        # resource objects instead of bare {type, id} references, and the
+        # `fields[student]` sparse-fieldset selects which attributes come
+        # back on those resolved students -- without it, only the id/type
+        # linkage is returned (no firstName/lastName, which is why the
+        # config flow would otherwise only have raw ids to show).
+        params = {
+            "include": "school,students,students.school,schools,prioritySchool",
+            "fields[student]": "firstName,lastName,photoUrl,className,dateOfBirth,regime,school",
+        }
+        doc = self._request("GET", f"/users-info/{user_id}", params=params)
         return jsonapi_deserialize(doc)
 
     def get_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
