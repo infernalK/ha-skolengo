@@ -169,10 +169,37 @@ class SkolengoClient:
     # ------------------------------------------------------------------
     # School lookup
     # ------------------------------------------------------------------
-    @staticmethod
-    def search_schools(text: str, session: requests.Session | None = None) -> list[SkolengoSchool]:
+    # French stopwords that, when present alongside other search terms,
+    # cause Skolengo's own `/schools?filter[text]` search to return zero
+    # results (observed empirically: "sucy en brie" -> 0 hits, "sucy brie"
+    # -> 2 hits, "sucy" alone -> 3 hits). Many French place names contain
+    # them (e.g. "Sucy-en-Brie"), so we retry without them if the raw query
+    # comes back empty.
+    _FR_STOPWORDS = {
+        "en", "de", "des", "du", "le", "la", "les", "l", "d",
+        "et", "sur", "sous", "aux", "au", "a", "à",
+    }
+
+    @classmethod
+    def _strip_stopwords(cls, text: str) -> str | None:
+        tokens = [t for t in text.replace("-", " ").split() if t.lower() not in cls._FR_STOPWORDS]
+        stripped = " ".join(tokens)
+        return stripped if stripped and stripped.lower() != text.lower() else None
+
+    @classmethod
+    def search_schools(cls, text: str, session: requests.Session | None = None) -> list[SkolengoSchool]:
         session = session or requests.Session()
         session.headers.setdefault("User-Agent", USER_AGENT)
+
+        schools = cls._search_schools_raw(text, session)
+        if not schools:
+            fallback = cls._strip_stopwords(text)
+            if fallback:
+                schools = cls._search_schools_raw(fallback, session)
+        return schools
+
+    @staticmethod
+    def _search_schools_raw(text: str, session: requests.Session) -> list[SkolengoSchool]:
         try:
             resp = session.get(
                 f"{API_BASE_URL}/schools",
@@ -196,10 +223,10 @@ class SkolengoClient:
             schools.append(
                 SkolengoSchool(
                     id=item["id"],
-                    name=item.get("name") or item.get("addressCity") or item["id"],
+                    name=item.get("name") or item.get("city") or item["id"],
                     ems_code=item.get("emsCode", ""),
                     oidc_wellknown_url=wellknown,
-                    city=item.get("addressCity"),
+                    city=item.get("city"),
                     raw=item,
                 )
             )
