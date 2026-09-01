@@ -15,8 +15,10 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Prochain réveil (`sensor.skolengo_..._next_alarm`, horodatage) : heure du premier cours du prochain jour d'école, moins un délai réglable (temps de préparation), pratique pour déclencher une automatisation de réveil. Passe automatiquement au jour suivant une fois l'heure de réveil du jour dépassée (week-ends et vacances sans cours sont sautés).
   - Nombre de cours aujourd'hui
   - Nombre de devoirs à faire
-  - Nombre d'absences enregistrées
+  - Nombre d'absences enregistrées (+ retards et dispenses, capteurs séparés)
+  - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
+  - Classe, avec date de naissance / régime / établissement en attributs
 - **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
@@ -87,11 +89,11 @@ max_items: 15
 
 ### `skolengo-evaluations-card`
 
-Notes et évaluations de compétences ("Notes"), à associer à un capteur `..._average_grade`.
+Notes et évaluations de compétences ("Notes"), à associer au capteur `..._notes` (celui qui porte le nombre de notes ; le détail de chaque note est dans son attribut `evaluations`). Le capteur `..._moyenne_generale` reste séparé et ne porte que la moyenne chiffrée.
 
 ```yaml
 type: custom:skolengo-evaluations-card
-entity: sensor.skolengo_..._average_grade
+entity: sensor.skolengo_..._notes
 title: Notes
 display_class_average: true
 ```

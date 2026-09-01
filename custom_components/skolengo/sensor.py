@@ -29,6 +29,7 @@ async def async_setup_entry(
             SkolengoAbsencesSensor(coordinator, entry),
             SkolengoDelaysSensor(coordinator, entry),
             SkolengoExemptionsSensor(coordinator, entry),
+            SkolengoEvaluationsSensor(coordinator, entry),
             SkolengoAverageGradeSensor(coordinator, entry),
         ]
     )
@@ -445,8 +446,82 @@ class SkolengoExemptionsSensor(SkolengoSensorBase):
         return {"exemptions": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
 
 
+def _evaluation_list(evaluation_services: list[dict]) -> list[dict]:
+    """Flatten evaluation-services -> evaluations into one list.
+
+    Skolengo doesn't separate "grades" (numeric) from "evaluations"
+    (skill-based) the way Pronote does: a single `evaluation` resource
+    can carry either a numeric `mark` or a set of skill levels,
+    depending on the school's grading system, so both are surfaced
+    here under one unified list.
+    """
+    items: list[dict] = []
+    for evaluation_service in evaluation_services:
+        subject = evaluation_service.get("subject") or {}
+        for evaluation in evaluation_service.get("evaluations") or []:
+            results = evaluation.get("evaluationResults") or []
+            mark = None
+            skills = []
+            for result in results:
+                if result.get("nonEvaluated") is not True and isinstance(
+                    result.get("value"), (int, float)
+                ):
+                    mark = float(result["value"])
+                for skill_result in result.get("subSkillsEvaluationResults") or []:
+                    level = skill_result.get("level")
+                    skill = (skill_result.get("subSkill") or {}).get("shortLabel")
+                    if level or skill:
+                        skills.append({"skill": skill, "level": level})
+            items.append(
+                {
+                    "id": evaluation.get("id"),
+                    "subject": subject.get("label"),
+                    "subject_color": subject.get("color"),
+                    "title": evaluation.get("title") or evaluation.get("topic"),
+                    "date": evaluation.get("dateTime"),
+                    "mark": mark,
+                    "scale": evaluation.get("scale"),
+                    "coefficient": evaluation.get("coefficient"),
+                    "class_average": evaluation.get("average"),
+                    "skills": skills,
+                }
+            )
+    return items
+
+
+class SkolengoEvaluationsSensor(SkolengoSensorBase):
+    """Number of recorded evaluations/grades, with the full list (used by
+    the bundled `skolengo-evaluations-card`) as an attribute.
+
+    Some schools' grade endpoints are known to be flaky or unsupported by
+    Skolengo for certain establishments; in that case this sensor will
+    simply report 0 with an empty list.
+    """
+
+    _attr_icon = "mdi:notebook-outline"
+    _attr_native_unit_of_measurement = "notes"
+    _attr_translation_key = "evaluations"
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "evaluations", "Notes")
+
+    def _items(self) -> list[dict]:
+        items = _evaluation_list(self._evaluations)
+        items.sort(key=lambda item: item["date"] or "", reverse=True)
+        return items
+
+    @property
+    def native_value(self) -> int:
+        return len(self._items())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"evaluations": self._items()[:30]}
+
+
 class SkolengoAverageGradeSensor(SkolengoSensorBase):
-    """Best-effort overall average grade.
+    """Best-effort overall average grade (numeric marks only -- a
+    skill-based evaluation has no single "average" to fold in).
 
     Some schools' grade endpoints are known to be flaky or unsupported by
     Skolengo for certain establishments; in that case this sensor will
@@ -461,55 +536,9 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
 
     @property
     def native_value(self) -> float | None:
-        grades = [item["mark"] for item in self._evaluation_list() if item["mark"] is not None]
+        grades = [
+            item["mark"] for item in _evaluation_list(self._evaluations) if item["mark"] is not None
+        ]
         if not grades:
             return None
         return round(sum(grades) / len(grades), 2)
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        items = self._evaluation_list()
-        items.sort(key=lambda item: item["date"] or "", reverse=True)
-        return {"evaluations": items[:30]}
-
-    def _evaluation_list(self) -> list[dict]:
-        """Flatten evaluation-services -> evaluations into one list.
-
-        Skolengo doesn't separate "grades" (numeric) from "evaluations"
-        (skill-based) the way Pronote does: a single `evaluation` resource
-        can carry either a numeric `mark` or a set of skill levels,
-        depending on the school's grading system, so both are surfaced
-        here under one unified list.
-        """
-        items: list[dict] = []
-        for evaluation_service in self._evaluations:
-            subject = evaluation_service.get("subject") or {}
-            for evaluation in evaluation_service.get("evaluations") or []:
-                results = evaluation.get("evaluationResults") or []
-                mark = None
-                skills = []
-                for result in results:
-                    if result.get("nonEvaluated") is not True and isinstance(
-                        result.get("value"), (int, float)
-                    ):
-                        mark = float(result["value"])
-                    for skill_result in result.get("subSkillsEvaluationResults") or []:
-                        level = skill_result.get("level")
-                        skill = (skill_result.get("subSkill") or {}).get("shortLabel")
-                        if level or skill:
-                            skills.append({"skill": skill, "level": level})
-                items.append(
-                    {
-                        "id": evaluation.get("id"),
-                        "subject": subject.get("label"),
-                        "subject_color": subject.get("color"),
-                        "title": evaluation.get("title") or evaluation.get("topic"),
-                        "date": evaluation.get("dateTime"),
-                        "mark": mark,
-                        "scale": evaluation.get("scale"),
-                        "coefficient": evaluation.get("coefficient"),
-                        "class_average": evaluation.get("average"),
-                        "skills": skills,
-                    }
-                )
-        return items

@@ -665,8 +665,16 @@
 
       let html = "";
       if (this._config.display_header) {
-        const avg = parseFloat(stateObj.state);
-        const avgLabel = isNaN(avg) ? "Moyenne indisponible" : `${avg.toFixed(2)}/20`;
+        // Computed client-side from the numeric marks in `evaluations`
+        // (not read from the entity's state, since this card can be
+        // pointed at either the "Notes" sensor, whose state is a count,
+        // or the separate "Moyenne générale" sensor).
+        const numericMarks = evaluations
+          .map((ev) => ev.mark)
+          .filter((m) => typeof m === "number" && !isNaN(m));
+        const avgLabel = numericMarks.length
+          ? `${(numericMarks.reduce((a, b) => a + b, 0) / numericMarks.length).toFixed(2)}/20`
+          : "Moyenne indisponible";
         html += `<div class="skolengo-header">
           <span class="skolengo-title">${escapeHtml(this._config.title)}</span>
           <span class="skolengo-subtitle">${escapeHtml(avgLabel)}</span>

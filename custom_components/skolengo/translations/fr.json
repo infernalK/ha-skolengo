@@ -73,6 +73,7 @@
       "absences": { "name": "Absences" },
       "delays": { "name": "Retards" },
       "exemptions": { "name": "Dispenses" },
+      "evaluations": { "name": "Notes" },
       "average_grade": { "name": "Moyenne générale" }
     },
     "calendar": {
