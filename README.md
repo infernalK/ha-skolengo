@@ -65,9 +65,13 @@ Contrairement à Pronote, Skolengo ne distingue pas notes numériques / moyennes
 
 Elles sont **chargées automatiquement** dès que l'intégration est configurée : aucune ressource Lovelace à ajouter manuellement (`skolengo-cards.js` est servi par l'intégration elle-même et enregistré comme module JS au démarrage de Home Assistant).
 
+*Les captures ci-dessous sont générées à partir des cartes réelles avec des données d'exemple, à titre illustratif.*
+
 ### `skolengo-timetable-card`
 
 Emploi du temps du jour (ou du prochain jour d'école s'il n'y a plus de cours aujourd'hui), à associer à un capteur `..._timetable_next_day`.
+
+<img src="docs/img/skolengo-timetable-card.png" alt="Rendu de la carte skolengo-timetable-card" width="380">
 
 ```yaml
 type: custom:skolengo-timetable-card
@@ -80,6 +84,8 @@ dim_ended_lessons: true
 
 Devoirs à faire, à associer à un capteur `..._homework_due`.
 
+<img src="docs/img/skolengo-homework-card.png" alt="Rendu de la carte skolengo-homework-card" width="380">
+
 ```yaml
 type: custom:skolengo-homework-card
 entity: sensor.skolengo_..._homework_due
@@ -91,6 +97,8 @@ max_items: 15
 
 Notes et évaluations de compétences ("Notes"), à associer au capteur `..._notes` (celui qui porte le nombre de notes ; le détail de chaque note est dans son attribut `evaluations`). Le capteur `..._moyenne_generale` reste séparé et ne porte que la moyenne chiffrée.
 
+<img src="docs/img/skolengo-evaluations-card.png" alt="Rendu de la carte skolengo-evaluations-card" width="380">
+
 ```yaml
 type: custom:skolengo-evaluations-card
 entity: sensor.skolengo_..._notes
@@ -101,6 +109,8 @@ display_class_average: true
 ### `skolengo-absences-card`
 
 Absences enregistrées, à associer à un capteur `..._absences`. Skolengo remonte en réalité un seul journal "vie scolaire" (absences, retards, dispenses) : cette même carte fonctionne donc aussi telle quelle pointée sur `..._delays` (retards) ou `..._exemptions` (dispenses, capteur désactivé par défaut), sans qu'il soit nécessaire d'utiliser une carte différente.
+
+<img src="docs/img/skolengo-absences-card.png" alt="Rendu de la carte skolengo-absences-card" width="380">
 
 ```yaml
 type: custom:skolengo-absences-card
