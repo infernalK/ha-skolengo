@@ -590,6 +590,72 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
         }
 
 
+def _subject_averages(evaluation_services: list[dict]) -> list[dict]:
+    """Per-subject breakdown of the official average, for use alongside
+    `_official_average()`'s overall figure.
+
+    Skolengo can return one `evaluationService` per (subject, period)
+    pair, so a subject followed over several periods may appear more
+    than once in `evaluation_services`; entries sharing the same subject
+    are combined the same way `_official_average()` combines subjects
+    (coefficient-weighted), so each subject appears exactly once here.
+    """
+    by_subject: dict[str, dict] = {}
+    order: list[str] = []
+    for service in evaluation_services:
+        subject = service.get("subject") or {}
+        key = subject.get("id") or subject.get("label")
+        if not key:
+            continue
+        if key not in by_subject:
+            by_subject[key] = {
+                "subject": subject.get("label"),
+                "subject_color": subject.get("color"),
+                "weighted_sum": 0.0,
+                "total_coefficient": 0.0,
+                "class_weighted_sum": 0.0,
+                "class_total_coefficient": 0.0,
+            }
+            order.append(key)
+        entry = by_subject[key]
+
+        coefficient = service.get("coefficient")
+        coefficient = float(coefficient) if isinstance(coefficient, (int, float)) and coefficient > 0 else 1.0
+
+        avg = service.get("studentAverage")
+        if isinstance(avg, (int, float)):
+            entry["weighted_sum"] += float(avg) * coefficient
+            entry["total_coefficient"] += coefficient
+
+        class_avg = service.get("average")
+        if isinstance(class_avg, (int, float)):
+            entry["class_weighted_sum"] += float(class_avg) * coefficient
+            entry["class_total_coefficient"] += coefficient
+
+    result = []
+    for key in order:
+        entry = by_subject[key]
+        average = (
+            round(entry["weighted_sum"] / entry["total_coefficient"], 2)
+            if entry["total_coefficient"]
+            else None
+        )
+        class_average = (
+            round(entry["class_weighted_sum"] / entry["class_total_coefficient"], 2)
+            if entry["class_total_coefficient"]
+            else None
+        )
+        result.append(
+            {
+                "subject": entry["subject"],
+                "subject_color": entry["subject_color"],
+                "average": average,
+                "class_average": class_average,
+            }
+        )
+    return result
+
+
 class SkolengoAverageGradeSensor(SkolengoSensorBase):
     """Overall average grade.
 
@@ -602,6 +668,11 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
     grade endpoints are known to be flaky or unsupported by Skolengo for
     certain establishments; in that case this sensor will simply report
     `unknown`.
+
+    The per-subject breakdown (`by_subject`, see `_subject_averages()`)
+    is only available when Skolengo's officially-computed averages are
+    present, since it wouldn't otherwise be meaningful to combine with
+    the naive fallback used for the overall state.
     """
 
     _attr_icon = "mdi:school-outline"
@@ -616,3 +687,7 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
         if official is not None:
             return official
         return _average_mark(_evaluation_list(self._evaluations))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"by_subject": _subject_averages(self._evaluations)}

@@ -754,6 +754,115 @@
   );
 
   // ---------------------------------------------------------------------
+  // skolengo-averages-card ("Moyennes")
+  // ---------------------------------------------------------------------
+
+  class SkolengoAveragesCard extends HTMLElement {
+    setConfig(config) {
+      if (!config || !config.entity) {
+        throw new Error('"entity" est obligatoire dans la configuration de la carte');
+      }
+      this._config = {
+        title: "Moyennes",
+        display_header: true,
+        display_class_average: true,
+        ...config,
+      };
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      this._render();
+    }
+
+    getCardSize() {
+      const stateObj = this._hass && this._hass.states[this._config.entity];
+      const bySubject = (stateObj && stateObj.attributes.by_subject) || [];
+      return 1 + Math.max(1, bySubject.length);
+    }
+
+    connectedCallback() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this._render();
+    }
+
+    _render() {
+      if (!this.shadowRoot) return;
+      if (!this._hass || !this._config) return;
+      const stateObj = this._hass.states[this._config.entity];
+      if (!stateObj) {
+        this.shadowRoot.innerHTML = cardWrapper(
+          `<div class="skolengo-empty">Entité "${escapeHtml(this._config.entity)}" introuvable.</div>`
+        );
+        return;
+      }
+
+      const attrs = stateObj.attributes || {};
+      const overall = parseFloat(stateObj.state);
+      const bySubject = (Array.isArray(attrs.by_subject) ? attrs.by_subject.slice() : []).sort((a, b) =>
+        (a.subject || "").localeCompare(b.subject || "")
+      );
+
+      let html = "";
+      if (this._config.display_header) {
+        const overallLabel = !isNaN(overall) ? `${overall.toFixed(2)}/20` : "Moyenne indisponible";
+        html += `<div class="skolengo-header">
+          <span class="skolengo-title">${escapeHtml(this._config.title)}</span>
+          <span class="skolengo-subtitle">${escapeHtml(overallLabel)}</span>
+        </div>`;
+      }
+
+      if (!bySubject.length) {
+        html += `<div class="skolengo-empty">Aucune moyenne disponible</div>`;
+      } else {
+        html += '<div class="skolengo-list">';
+        for (const subj of bySubject) {
+          const color = subjectColor(subj.subject_color);
+          const metaBits = [];
+          if (
+            this._config.display_class_average &&
+            subj.class_average !== null &&
+            subj.class_average !== undefined
+          ) {
+            metaBits.push(`Moy. classe : ${escapeHtml(subj.class_average)}`);
+          }
+
+          const markHtml =
+            subj.average !== null && subj.average !== undefined
+              ? `<span class="skolengo-mark">${escapeHtml(subj.average)}/20</span>`
+              : `<span class="skolengo-meta">Non disponible</span>`;
+
+          html += `<div class="skolengo-item" style="--item-color:${color}">
+            <div class="skolengo-item-main">
+              <div class="skolengo-item-top">
+                <span class="skolengo-subject">${escapeHtml(subj.subject || "Matière")}</span>
+                ${markHtml}
+              </div>
+              ${metaBits.length ? `<div class="skolengo-line">${metaBits.join(" · ")}</div>` : ""}
+            </div>
+          </div>`;
+        }
+        html += "</div>";
+      }
+
+      this.shadowRoot.innerHTML = cardWrapper(html);
+    }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-averages-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findFirstCompatibleEntity(hass, "by_subject"), title: "Moyennes" };
+    }
+  }
+  customElements.define("skolengo-averages-card", SkolengoAveragesCard);
+  customElements.define(
+    "skolengo-averages-card-editor",
+    createConfigEditor([TITLE_FIELD, boolField("display_header"), boolField("display_class_average")], "by_subject")
+  );
+
+  // ---------------------------------------------------------------------
   // skolengo-absences-card
   //
   // Generic: works for any of the three "vie scolaire" sensors, which all
@@ -914,6 +1023,12 @@
       type: "skolengo-evaluations-card",
       name: "Skolengo - Notes",
       description: "Affiche les notes et évaluations de compétences depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-averages-card",
+      name: "Skolengo - Moyennes",
+      description: "Affiche la moyenne générale et le détail des moyennes par matière depuis un capteur Skolengo.",
       preview: false,
     },
     {

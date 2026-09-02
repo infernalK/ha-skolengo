@@ -59,9 +59,9 @@ Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'in
 
 ## Cartes Lovelace intégrées
 
-Cette intégration embarque 4 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
+Cette intégration embarque 5 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
 
-Contrairement à Pronote, Skolengo ne distingue pas notes numériques / moyennes / évaluations de compétences (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. Le périmètre est donc volontairement de **4 cartes** (au lieu de 7) : pas de carte "moyennes", pas de carte "évaluations" séparée de la carte "notes", pas de carte "retards".
+Contrairement à Pronote, Skolengo ne distingue pas notes numériques / évaluations de compétences (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. Le périmètre est donc volontairement de **5 cartes** (au lieu de 7) : pas de carte "évaluations" séparée de la carte "notes", pas de carte "retards".
 
 Elles sont **chargées automatiquement** dès que l'intégration est configurée : aucune ressource Lovelace à ajouter manuellement (`skolengo-cards.js` est servi par l'intégration elle-même et enregistré comme module JS au démarrage de Home Assistant).
 
@@ -103,6 +103,19 @@ Notes et évaluations de compétences ("Notes"), à associer au capteur `..._not
 type: custom:skolengo-evaluations-card
 entity: sensor.skolengo_..._notes
 title: Notes
+display_class_average: true
+```
+
+### `skolengo-averages-card`
+
+Moyenne générale et détail des moyennes par matière, à associer au capteur `..._moyenne_generale`. Ce capteur porte la moyenne générale (pondérée par coefficient) comme état, et le détail par matière (`by_subject` : moyenne de l'élève et de la classe pour chaque matière, elle-même pondérée par coefficient si la matière a été suivie sur plusieurs périodes) en attribut.
+
+<img src="docs/img/skolengo-averages-card.png" alt="Rendu de la carte skolengo-averages-card" width="380">
+
+```yaml
+type: custom:skolengo-averages-card
+entity: sensor.skolengo_..._moyenne_generale
+title: Moyennes
 display_class_average: true
 ```
 
