@@ -21,11 +21,15 @@ from .const import (
     CONF_SCHOOL_ID,
     CONF_SCHOOL_OIDC_WELLKNOWN,
     CONF_STUDENT_ID,
+    CONF_STUDENT_NAME,
     CONF_USER_ID,
     DEFAULT_ALARM_OFFSET,
     DOMAIN,
+    EVENT_SKOLENGO,
+    EVENT_TYPE_NEW_GRADE,
     HOMEWORK_DAYS_FUTURE,
 )
+from .evaluations import flatten_evaluations
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +69,11 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self.wellknown_url: str = entry.data[CONF_SCHOOL_OIDC_WELLKNOWN]
         self.user_id: str = entry.data[CONF_USER_ID]
         self.client: SkolengoClient | None = None
+        # Evaluation IDs seen on the previous update, used to detect new
+        # grades and fire `new_grade` events; `None` until the first
+        # successful update so nothing is fired for pre-existing grades
+        # on startup.
+        self._known_evaluation_ids: set[str] | None = None
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -178,7 +187,36 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             raise UpdateFailed(str(err)) from err
 
         self._async_persist_refresh_token()
+        self._async_fire_new_grade_events(data.evaluations)
         return data
+
+    def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
+        """Fire one `skolengo_event` (type `new_grade`) per grade that
+        wasn't present on the previous update, mirroring hass-pronote's
+        `pronote_event` so automations can react as grades are published.
+
+        Nothing is fired on the very first update after (re)start, since
+        every already-existing grade would otherwise look "new".
+        """
+        items = flatten_evaluations(evaluation_services)
+        current_ids = {item["id"] for item in items if item.get("id")}
+
+        if self._known_evaluation_ids is not None:
+            new_ids = current_ids - self._known_evaluation_ids
+            if new_ids:
+                student_name = self.entry.data.get(CONF_STUDENT_NAME, "")
+                for item in items:
+                    if item.get("id") in new_ids:
+                        self.hass.bus.async_fire(
+                            EVENT_SKOLENGO,
+                            {
+                                "type": EVENT_TYPE_NEW_GRADE,
+                                "student_name": student_name,
+                                **item,
+                            },
+                        )
+
+        self._known_evaluation_ids = current_ids
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:

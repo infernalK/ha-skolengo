@@ -46,3 +46,10 @@ HOMEWORK_DAYS_FUTURE = 15
 PLATFORMS = ["calendar", "sensor"]
 
 MANUFACTURER = "Skolengo (unofficial)"
+
+# --- Events ---
+# Fired on the HA event bus so automations can react to changes, mirroring
+# hass-pronote's `pronote_event`. `event_data["type"]` distinguishes the
+# kind of change (only "new_grade" for now).
+EVENT_SKOLENGO = "skolengo_event"
+EVENT_TYPE_NEW_GRADE = "new_grade"
