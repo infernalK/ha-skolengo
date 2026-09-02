@@ -248,11 +248,13 @@ class SkolengoTimetableTodaySensor(SkolengoTimetableDaySensorBase):
 
 
 class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
-    """Full schedule for the "next" school day: today's remaining lessons
-    if the day isn't over yet, otherwise the next day that has lessons.
+    """Full schedule for the next day after today that actually has
+    lessons (skipping weekends/holidays, which simply have none).
 
-    Exists so the bundled `skolengo-timetable-card` can render a day's
-    timetable without talking to the Calendar API.
+    Always strictly after today -- e.g. on a Friday this rolls over to
+    Monday, not back to Friday's own remaining lessons. Exists so the
+    bundled `skolengo-timetable-card` can render a day's timetable
+    without talking to the Calendar API.
     """
 
     _attr_icon = "mdi:timetable"
@@ -276,20 +278,11 @@ class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
         }
 
     def _chosen_day(self):
-        now = dt_util.now()
+        today = dt_util.now().date()
         by_day = self._lessons_by_day()
         for day in sorted(by_day):
-            if day < now.date():
-                continue
-            if day == now.date():
-                has_remaining = any(
-                    (dt_util.as_local(dt_util.parse_datetime(lesson["startDateTime"])) >= now)
-                    for lesson in by_day[day]
-                    if lesson.get("startDateTime") and not lesson.get("canceled")
-                )
-                if not has_remaining:
-                    continue
-            return day
+            if day > today:
+                return day
         return None
 
     def _day_lessons(self) -> list[dict]:
