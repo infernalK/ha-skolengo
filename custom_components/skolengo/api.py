@@ -741,16 +741,19 @@ class SkolengoClient:
             doc = self._request("GET", "/homework-assignments", params=params)
             return jsonapi_deserialize(doc) or []
         except SkolengoApiError as err:
-            if "getDueDateTime" not in str(err):
+            if "Skolengo API error 500" not in str(err):
                 raise
             # Server-side bug: Skolengo's API throws a 500 when filtering by
             # dueDate range if any assignment in scope has no due date set,
             # and both bounds of the filter are mandatory (so we can't just
-            # drop one). Fall back to the homework assignments already
-            # embedded in the agenda response, which isn't affected.
+            # drop one). The error detail isn't always present (sometimes
+            # it's a bare INTERNAL_SERVER_ERROR with no message), so match
+            # on any 500 from this endpoint rather than the specific
+            # getDueDateTime message. Fall back to the homework assignments
+            # already embedded in the agenda response, which isn't affected.
             _LOGGER.debug(
-                "Homework endpoint hit a Skolengo server bug (assignment "
-                "with no due date); falling back to agenda-embedded homework"
+                "Homework endpoint returned a 500 (likely the Skolengo "
+                "no-due-date server bug); falling back to agenda-embedded homework"
             )
             return self._get_homework_via_agenda(student_id, start, end)
 
