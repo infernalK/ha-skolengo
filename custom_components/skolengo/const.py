@@ -43,6 +43,13 @@ AGENDA_DAYS_PAST = 2
 AGENDA_DAYS_FUTURE = 15
 HOMEWORK_DAYS_FUTURE = 60
 
+# When the /homework-assignments endpoint 500s (Skolengo server bug) and we
+# fall back to pulling homework embedded in the agenda, assignments are
+# nested under the day they were *given*, not their due date. Look back this
+# many days from "today" when querying the agenda so assignments given a
+# while ago but due within the HOMEWORK_DAYS_FUTURE window are still found.
+HOMEWORK_AGENDA_LOOKBACK_DAYS = 60
+
 PLATFORMS = ["calendar", "sensor"]
 
 MANUFACTURER = "Skolengo (unofficial)"

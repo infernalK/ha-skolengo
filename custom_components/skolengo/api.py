@@ -17,14 +17,20 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
-from .const import API_BASE_URL, OID_CLIENT_ID_B64, OID_CLIENT_SECRET_B64, REDIRECT_URI
+from .const import (
+    API_BASE_URL,
+    HOMEWORK_AGENDA_LOOKBACK_DAYS,
+    OID_CLIENT_ID_B64,
+    OID_CLIENT_SECRET_B64,
+    REDIRECT_URI,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -758,9 +764,16 @@ class SkolengoClient:
             return self._get_homework_via_agenda(student_id, start, end)
 
     def _get_homework_via_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        # homeworkAssignments are embedded under the agenda day they were
+        # *assigned* on, not their due date, so an assignment given out
+        # before `start` but due within [start, end] would otherwise be
+        # missed. Query the agenda further back and filter by the
+        # assignment's own dueDate to match what the primary endpoint would
+        # have returned.
+        agenda_start = start - timedelta(days=HOMEWORK_AGENDA_LOOKBACK_DAYS)
         params = {
             "filter[student.id]": student_id,
-            "filter[date][GE]": start.isoformat(),
+            "filter[date][GE]": agenda_start.isoformat(),
             "filter[date][LE]": end.isoformat(),
             "include": "homeworkAssignments,homeworkAssignments.subject",
         }
@@ -772,6 +785,9 @@ class SkolengoClient:
             for hw in day.get("homeworkAssignments") or []:
                 hw_id = hw.get("id")
                 if hw_id in seen:
+                    continue
+                due = (hw.get("dueDate") or hw.get("dueDateTime") or "")[:10]
+                if due and not (start.isoformat() <= due <= end.isoformat()):
                     continue
                 seen.add(hw_id)
                 homework.append(hw)
