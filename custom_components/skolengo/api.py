@@ -127,18 +127,6 @@ def jsonapi_deserialize(document: dict[str, Any]) -> Any:
     return resolve(data)
 
 
-def _homework_in_range(item: dict[str, Any], start: date, end: date) -> bool:
-    """Keep homework within [start, end], and anything with no due date."""
-    raw = item.get("dueDate") or item.get("dueDateTime")
-    if not raw:
-        return True
-    try:
-        due = date.fromisoformat(str(raw)[:10])
-    except ValueError:
-        return True
-    return start <= due <= end
-
-
 @dataclass
 class SkolengoTokens:
     access_token: str
@@ -751,28 +739,40 @@ class SkolengoClient:
         }
         try:
             doc = self._request("GET", "/homework-assignments", params=params)
+            return jsonapi_deserialize(doc) or []
         except SkolengoApiError as err:
             if "getDueDateTime" not in str(err):
                 raise
             # Server-side bug: Skolengo's API throws a 500 when filtering by
-            # dueDate range if any assignment in scope has no due date set.
-            # filter[dueDate][GE] is mandatory, so keep it and drop only the
-            # upper bound, narrowing the range ourselves client-side while
-            # keeping assignments that have no due date at all.
+            # dueDate range if any assignment in scope has no due date set,
+            # and both bounds of the filter are mandatory (so we can't just
+            # drop one). Fall back to the homework assignments already
+            # embedded in the agenda response, which isn't affected.
             _LOGGER.debug(
-                "Homework date-range filter hit a Skolengo server bug "
-                "(assignment with no due date); retrying without upper bound"
+                "Homework endpoint hit a Skolengo server bug (assignment "
+                "with no due date); falling back to agenda-embedded homework"
             )
-            doc = self._request(
-                "GET",
-                "/homework-assignments",
-                params={
-                    "filter[student.id]": student_id,
-                    "filter[dueDate][GE]": start.isoformat(),
-                },
-            )
-        items = jsonapi_deserialize(doc) or []
-        return [item for item in items if _homework_in_range(item, start, end)]
+            return self._get_homework_via_agenda(student_id, start, end)
+
+    def _get_homework_via_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        params = {
+            "filter[student.id]": student_id,
+            "filter[date][GE]": start.isoformat(),
+            "filter[date][LE]": end.isoformat(),
+            "include": "homeworkAssignments,homeworkAssignments.subject",
+        }
+        doc = self._request("GET", "/agendas", params=params)
+        days = jsonapi_deserialize(doc) or []
+        seen: set[str] = set()
+        homework: list[dict[str, Any]] = []
+        for day in days:
+            for hw in day.get("homeworkAssignments") or []:
+                hw_id = hw.get("id")
+                if hw_id in seen:
+                    continue
+                seen.add(hw_id)
+                homework.append(hw)
+        return homework
 
     def set_homework_done(self, homework_id: str, done: bool) -> None:
         url = f"{API_BASE_URL}/homework-assignments/{homework_id}"
