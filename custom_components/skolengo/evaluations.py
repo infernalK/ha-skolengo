@@ -5,6 +5,8 @@ Split out from `sensor.py` so `coordinator.py` can also flatten evaluations
 """
 from __future__ import annotations
 
+from .colors import normalize_color
+
 
 def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
     """Flatten evaluation-services -> evaluations into one list.
@@ -49,7 +51,7 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                 {
                     "id": evaluation.get("id"),
                     "subject": subject.get("label"),
-                    "subject_color": subject.get("color"),
+                    "subject_color": normalize_color(subject.get("color")),
                     "title": evaluation.get("title") or evaluation.get("topic"),
                     "date": evaluation.get("dateTime"),
                     "mark": mark,

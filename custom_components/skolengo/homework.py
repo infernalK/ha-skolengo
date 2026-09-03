@@ -5,6 +5,8 @@ Split out from `sensor.py` so `coordinator.py` can also serialize homework
 """
 from __future__ import annotations
 
+from .colors import normalize_color
+
 
 def flatten_homework(homework: dict) -> dict:
     """Flatten one `/homework-assignments` (or agenda-embedded) resource."""
@@ -13,7 +15,7 @@ def flatten_homework(homework: dict) -> dict:
     return {
         "id": homework.get("id"),
         "subject": subject.get("label"),
-        "subject_color": subject.get("color"),
+        "subject_color": normalize_color(subject.get("color")),
         "due_date": homework.get("dueDate") or homework.get("dueDateTime"),
         "done": bool(homework.get("done")),
         "title": homework.get("title"),

@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
+from .colors import normalize_color
 from .const import CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
 from .coordinator import SkolengoDataUpdateCoordinator
 from .evaluations import flatten_evaluations as _evaluation_list
@@ -196,7 +197,7 @@ def _serialize_lesson(lesson: dict) -> dict:
     return {
         "id": lesson.get("id"),
         "subject": (lesson.get("subject") or {}).get("label") or lesson.get("title"),
-        "subject_color": (lesson.get("subject") or {}).get("color"),
+        "subject_color": normalize_color((lesson.get("subject") or {}).get("color")),
         "start": lesson.get("startDateTime"),
         "end": lesson.get("endDateTime"),
         "location": lesson.get("location") or lesson.get("room"),
@@ -589,7 +590,7 @@ def _subject_averages(evaluation_services: list[dict]) -> list[dict]:
         if key not in by_subject:
             by_subject[key] = {
                 "subject": subject.get("label"),
-                "subject_color": subject.get("color"),
+                "subject_color": normalize_color(subject.get("color")),
                 "weighted_sum": 0.0,
                 "total_coefficient": 0.0,
                 "class_weighted_sum": 0.0,
