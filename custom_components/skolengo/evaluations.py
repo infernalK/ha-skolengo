@@ -64,6 +64,9 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                     "subject_student_average": subject_student_average,
                     "subject_class_average": subject_class_average,
                     "subject_coefficient": subject_coefficient,
+                    # Tagged by the coordinator (one fetch per period) so
+                    # the sensors/cards can offer a per-period breakdown.
+                    "period_id": evaluation_service.get("_period_id"),
                 }
             )
     return items

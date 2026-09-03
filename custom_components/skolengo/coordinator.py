@@ -44,6 +44,7 @@ class SkolengoData:
     homework: list[dict] = field(default_factory=list)
     absences: list[dict] = field(default_factory=list)
     evaluations: list[dict] = field(default_factory=list)
+    periods: list[dict] = field(default_factory=list)
     student_name: str = ""
     next_alarm: datetime | None = None
     student_info: dict = field(default_factory=dict)
@@ -156,21 +157,41 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 # Skolengo's own API (not something we can fix); never fatal.
                 _LOGGER.debug("Unable to fetch absences (non-fatal): %s", err)
 
-            evaluations: list[dict] = []
-            try:
-                evaluations = client.get_evaluations(self.student_id)
-            except SkolengoApiError as err:
-                # Known to be flaky/unsupported on some schools; never fatal.
-                _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
-
             periods: list[dict] = []
             try:
-                periods = client.get_evaluations_settings(self.student_id)
-                _LOGGER.debug("evaluations-settings periods: %s", periods)
+                settings = client.get_evaluations_settings(self.student_id)
+                periods = (settings[0].get("periods") or []) if settings else []
             except SkolengoApiError as err:
+                # Known to be flaky/unsupported on some schools; never fatal.
                 _LOGGER.debug("Unable to fetch evaluation periods (non-fatal): %s", err)
-            if evaluations:
-                _LOGGER.debug("sample evaluationService raw keys: %s", evaluations[0])
+
+            evaluations: list[dict] = []
+            if periods:
+                # Fetch evaluations one period (trimester/semester) at a
+                # time and tag each evaluationService with its period id,
+                # so the sensors/cards can offer a per-period breakdown
+                # without extra round-trips when the user switches period.
+                for period in periods:
+                    period_id = period.get("id")
+                    try:
+                        period_evaluations = client.get_evaluations(self.student_id, period_id)
+                    except SkolengoApiError as err:
+                        _LOGGER.debug(
+                            "Unable to fetch evaluations for period %s (non-fatal): %s",
+                            period_id,
+                            err,
+                        )
+                        continue
+                    for service in period_evaluations:
+                        service["_period_id"] = period_id
+                    evaluations.extend(period_evaluations)
+            else:
+                # No period info available (endpoint unsupported/flaky for
+                # this school) -- fall back to the unfiltered fetch.
+                try:
+                    evaluations = client.get_evaluations(self.student_id)
+                except SkolengoApiError as err:
+                    _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
 
             alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
             next_alarm = _compute_next_alarm(lessons, alarm_offset)
@@ -187,6 +208,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 homework=homework,
                 absences=absences,
                 evaluations=evaluations,
+                periods=periods,
                 next_alarm=next_alarm,
                 student_info=student_info,
             )

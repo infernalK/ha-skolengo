@@ -75,6 +75,10 @@ class SkolengoSensorBase(CoordinatorEntity[SkolengoDataUpdateCoordinator], Senso
         return self.coordinator.data.evaluations if self.coordinator.data else []
 
     @property
+    def _periods(self) -> list[dict]:
+        return self.coordinator.data.periods if self.coordinator.data else []
+
+    @property
     def _student_info(self) -> dict:
         return self.coordinator.data.student_info if self.coordinator.data else {}
 
@@ -481,6 +485,41 @@ def _official_average(evaluation_services: list[dict]) -> float | None:
     return round(weighted_sum / total_coefficient, 2)
 
 
+def _periods_meta(periods: list[dict]) -> list[dict]:
+    """Serialize periods (trimesters/semesters) for the card's selector,
+    sorted chronologically with the currently-active one flagged.
+    """
+    today = dt_util.now().date().isoformat()
+    result = [
+        {
+            "id": period.get("id"),
+            "label": period.get("label"),
+            "start_date": period.get("startDate"),
+            "end_date": period.get("endDate"),
+            "current": bool(
+                period.get("startDate")
+                and period.get("endDate")
+                and period["startDate"] <= today <= period["endDate"]
+            ),
+        }
+        for period in periods
+    ]
+    result.sort(key=lambda p: p["start_date"] or "")
+    return result
+
+
+def _group_services_by_period(evaluation_services: list[dict]) -> dict[str, list[dict]]:
+    """Split evaluationService records back out by the period id the
+    coordinator tagged them with when fetching one period at a time.
+    """
+    grouped: dict[str, list[dict]] = {}
+    for service in evaluation_services:
+        period_id = service.get("_period_id")
+        if period_id:
+            grouped.setdefault(period_id, []).append(service)
+    return grouped
+
+
 class SkolengoEvaluationsSensor(SkolengoSensorBase):
     """Number of recorded evaluations/grades, with the full list (used by
     the bundled `skolengo-evaluations-card`) as an attribute.
@@ -510,9 +549,23 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
     def extra_state_attributes(self) -> dict:
         items = self._items()
         official = _official_average(self._evaluations)
+        by_period: dict[str, dict] = {}
+        for period_id, services in _group_services_by_period(self._evaluations).items():
+            period_items = sorted(
+                (item for item in items if item.get("period_id") == period_id),
+                key=lambda item: item["date"] or "",
+                reverse=True,
+            )
+            period_official = _official_average(services)
+            by_period[period_id] = {
+                "evaluations": period_items[:30],
+                "average": period_official if period_official is not None else _average_mark(period_items),
+            }
         return {
             "evaluations": items[:30],
             "average": official if official is not None else _average_mark(items),
+            "periods": _periods_meta(self._periods),
+            "evaluations_by_period": by_period,
         }
 
 
@@ -616,4 +669,15 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"by_subject": _subject_averages(self._evaluations)}
+        by_period: dict[str, dict] = {}
+        for period_id, services in _group_services_by_period(self._evaluations).items():
+            period_official = _official_average(services)
+            by_period[period_id] = {
+                "average": period_official,
+                "by_subject": _subject_averages(services),
+            }
+        return {
+            "by_subject": _subject_averages(self._evaluations),
+            "periods": _periods_meta(self._periods),
+            "average_by_period": by_period,
+        }

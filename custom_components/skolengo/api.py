@@ -805,7 +805,12 @@ class SkolengoClient:
         return jsonapi_deserialize(doc) or []
 
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
-        params = {"filter[student.id]": student_id}
+        # `include=periods` is required to resolve the `periods` relationship
+        # into full {id, label, startDate, endDate} objects -- without it,
+        # only bare {type, id} linkage comes back (confirmed against the
+        # reference scolengo-api client, since Skolengo's own docs don't
+        # cover this).
+        params = {"filter[student.id]": student_id, "include": "periods"}
         doc = self._request("GET", "/evaluations-settings", params=params)
         return jsonapi_deserialize(doc) or []
 
