@@ -736,28 +736,30 @@ class SkolengoClient:
     def _get_agenda_paginated(
         self, student_id: str, start: date, end: date, include: str
     ) -> list[dict[str, Any]]:
-        # The API silently paginates /agendas (20 "day" resources per page
-        # by default; still capped even with an explicit page[limit]), so a
-        # wide date range needs actual offset pagination or days get
-        # dropped without any error.
-        page_size = 100
-        offset = 0
+        # /agendas silently truncates wide date ranges (confirmed: only the
+        # first ~20 days come back with no error). Adding explicit
+        # page[limit]/page[offset] doesn't just raise that cap -- it was
+        # observed to make the API stop resolving the homeworkAssignments
+        # relationship entirely (every day comes back with an empty list,
+        # even ones known to have homework). So instead of relying on the
+        # page[] query params at all, split the requested range into chunks
+        # small enough to each fit under the natural per-request cap, using
+        # the exact plain request shape that's confirmed to work, and
+        # concatenate the results.
+        chunk_days = 15
         days: list[dict[str, Any]] = []
-        while True:
+        chunk_start = start
+        while chunk_start <= end:
+            chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), end)
             params = {
                 "filter[student.id]": student_id,
-                "filter[date][GE]": start.isoformat(),
-                "filter[date][LE]": end.isoformat(),
+                "filter[date][GE]": chunk_start.isoformat(),
+                "filter[date][LE]": chunk_end.isoformat(),
                 "include": include,
-                "page[limit]": page_size,
-                "page[offset]": offset,
             }
             doc = self._request("GET", "/agendas", params=params)
-            page_days = jsonapi_deserialize(doc) or []
-            days.extend(page_days)
-            if len(page_days) < page_size:
-                break
-            offset += page_size
+            days.extend(jsonapi_deserialize(doc) or [])
+            chunk_start = chunk_end + timedelta(days=1)
         return days
 
     def get_homework(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
@@ -765,7 +767,6 @@ class SkolengoClient:
             "filter[student.id]": student_id,
             "filter[dueDate][GE]": start.isoformat(),
             "filter[dueDate][LE]": end.isoformat(),
-            "page[limit]": 100,
         }
         try:
             doc = self._request("GET", "/homework-assignments", params=params)
@@ -801,19 +802,6 @@ class SkolengoClient:
         seen: set[str] = set()
         homework: list[dict[str, Any]] = []
         raw_count = 0
-        days_with_key = sum(1 for d in days if "homeworkAssignments" in d)
-        days_with_nonempty = sum(1 for d in days if d.get("homeworkAssignments"))
-        if days:
-            _LOGGER.debug(
-                "Agenda fallback sample day keys: %s | first day: %s",
-                sorted(days[0].keys()),
-                json.dumps(days[0])[:1000],
-            )
-        _LOGGER.debug(
-            "Agenda fallback: %d/%d day(s) have the homeworkAssignments key, "
-            "%d have a non-empty list",
-            days_with_key, len(days), days_with_nonempty,
-        )
         for day in days:
             for hw in day.get("homeworkAssignments") or []:
                 raw_count += 1
