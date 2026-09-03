@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import SkolengoDataUpdateCoordinator
@@ -28,7 +29,6 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     """
     if hass.data.get(_FRONTEND_REGISTERED_KEY):
         return
-    hass.data[_FRONTEND_REGISTERED_KEY] = True
 
     www_dir = os.path.join(os.path.dirname(__file__), "www")
 
@@ -43,18 +43,28 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         # Fallback for older Home Assistant Core versions.
         hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=False)
 
+    # Cache-bust on the integration's own version: without this, browsers
+    # (and the frontend's service worker, which runtime-caches this URL)
+    # keep serving whatever they first fetched at this fixed path -- including
+    # a transient failure -- until a hard refresh, even long after the file
+    # on disk has changed or started being served correctly.
+    integration = await async_get_integration(hass, DOMAIN)
+    js_url = f"{STATIC_PATH}/{JS_FILENAME}?v={integration.version}"
+
     try:
         from homeassistant.components.frontend import add_extra_js_url
 
-        add_extra_js_url(hass, f"{STATIC_PATH}/{JS_FILENAME}")
+        add_extra_js_url(hass, js_url)
     except ImportError:
         _LOGGER.warning(
             "Impossible d'enregistrer automatiquement les cartes Lovelace Skolengo "
-            "(module frontend indisponible) ; ajoutez %s/%s comme ressource "
+            "(module frontend indisponible) ; ajoutez %s comme ressource "
             "manuellement si besoin.",
-            STATIC_PATH,
-            JS_FILENAME,
+            js_url,
         )
+        return
+
+    hass.data[_FRONTEND_REGISTERED_KEY] = True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
