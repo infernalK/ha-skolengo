@@ -733,6 +733,10 @@ class SkolengoClient:
                 "lessons,lessons.subject,lessons.teachers,"
                 "homeworkAssignments,homeworkAssignments.subject"
             ),
+            # The API silently paginates at 20 "day" resources per page; a
+            # date range spanning more than 20 days would otherwise return
+            # only the first 20 days and drop the rest.
+            "page[limit]": 100,
         }
         doc = self._request("GET", "/agendas", params=params)
         return jsonapi_deserialize(doc) or []
@@ -742,6 +746,7 @@ class SkolengoClient:
             "filter[student.id]": student_id,
             "filter[dueDate][GE]": start.isoformat(),
             "filter[dueDate][LE]": end.isoformat(),
+            "page[limit]": 100,
         }
         try:
             doc = self._request("GET", "/homework-assignments", params=params)
@@ -776,6 +781,9 @@ class SkolengoClient:
             "filter[date][GE]": agenda_start.isoformat(),
             "filter[date][LE]": end.isoformat(),
             "include": "homeworkAssignments,homeworkAssignments.subject",
+            # See get_agenda: without this, a range over 20 days silently
+            # returns only the first 20 days.
+            "page[limit]": 100,
         }
         doc = self._request("GET", "/agendas", params=params)
         days = jsonapi_deserialize(doc) or []
