@@ -756,16 +756,20 @@ class SkolengoClient:
                 raise
             # Server-side bug: Skolengo's API throws a 500 when filtering by
             # dueDate range if any assignment in scope has no due date set.
-            # Fall back to fetching without the date filter and narrow the
-            # range ourselves, keeping assignments that have no due date.
+            # filter[dueDate][GE] is mandatory, so keep it and drop only the
+            # upper bound, narrowing the range ourselves client-side while
+            # keeping assignments that have no due date at all.
             _LOGGER.debug(
                 "Homework date-range filter hit a Skolengo server bug "
-                "(assignment with no due date); retrying without date filter"
+                "(assignment with no due date); retrying without upper bound"
             )
             doc = self._request(
                 "GET",
                 "/homework-assignments",
-                params={"filter[student.id]": student_id},
+                params={
+                    "filter[student.id]": student_id,
+                    "filter[dueDate][GE]": start.isoformat(),
+                },
             )
         items = jsonapi_deserialize(doc) or []
         return [item for item in items if _homework_in_range(item, start, end)]
