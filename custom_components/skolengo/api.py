@@ -801,6 +801,19 @@ class SkolengoClient:
         seen: set[str] = set()
         homework: list[dict[str, Any]] = []
         raw_count = 0
+        days_with_key = sum(1 for d in days if "homeworkAssignments" in d)
+        days_with_nonempty = sum(1 for d in days if d.get("homeworkAssignments"))
+        if days:
+            _LOGGER.debug(
+                "Agenda fallback sample day keys: %s | first day: %s",
+                sorted(days[0].keys()),
+                json.dumps(days[0])[:1000],
+            )
+        _LOGGER.debug(
+            "Agenda fallback: %d/%d day(s) have the homeworkAssignments key, "
+            "%d have a non-empty list",
+            days_with_key, len(days), days_with_nonempty,
+        )
         for day in days:
             for hw in day.get("homeworkAssignments") or []:
                 raw_count += 1
