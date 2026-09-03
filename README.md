@@ -19,7 +19,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
-- **Événement `skolengo_event`** (type `new_grade`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation apparaît (rien n'est émis pour les notes déjà présentes lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Exemple de déclencheur :
+- **Événement `skolengo_event`** (types `new_grade` et `new_homework`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît (rien n'est émis pour ce qui est déjà présent lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Exemple de déclencheur :
   ```yaml
   trigger:
     - platform: event
@@ -27,7 +27,8 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
       event_data:
         type: new_grade
   ```
-  Les données de l'événement contiennent notamment `student_name`, `subject`, `title`, `mark`, `scale`, `date`.
+  Les données de l'événement `new_grade` contiennent notamment `student_name`, `subject`, `title`, `mark`, `scale`, `date`.
+  Les données de l'événement `new_homework` contiennent notamment `student_name`, `subject`, `title`, `due_date`, `teacher`, `html`.
 - **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.

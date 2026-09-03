@@ -12,6 +12,7 @@ from homeassistant.util import dt as dt_util
 from .const import CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
 from .coordinator import SkolengoDataUpdateCoordinator
 from .evaluations import flatten_evaluations as _evaluation_list
+from .homework import flatten_homework
 
 
 async def async_setup_entry(
@@ -332,26 +333,12 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        def _serialize(hw: dict) -> dict:
-            subject = hw.get("subject") or {}
-            teacher = hw.get("teacher") or {}
-            return {
-                "id": hw.get("id"),
-                "subject": subject.get("label"),
-                "subject_color": subject.get("color"),
-                "due_date": hw.get("dueDate") or hw.get("dueDateTime"),
-                "done": bool(hw.get("done")),
-                "title": hw.get("title"),
-                "html": hw.get("html"),
-                "teacher": f"{teacher.get('firstName', '')} {teacher.get('lastName', '')}".strip() or None,
-            }
-
         homework_sorted = sorted(
             self._homework, key=lambda hw: hw.get("dueDate") or hw.get("dueDateTime") or ""
         )
         return {
-            "assignments": [_serialize(hw) for hw in homework_sorted if not hw.get("done")][:30],
-            "done_assignments": [_serialize(hw) for hw in homework_sorted if hw.get("done")][:30],
+            "assignments": [flatten_homework(hw) for hw in homework_sorted if not hw.get("done")][:30],
+            "done_assignments": [flatten_homework(hw) for hw in homework_sorted if hw.get("done")][:30],
         }
 
 

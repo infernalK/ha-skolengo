@@ -27,9 +27,11 @@ from .const import (
     DOMAIN,
     EVENT_SKOLENGO,
     EVENT_TYPE_NEW_GRADE,
+    EVENT_TYPE_NEW_HOMEWORK,
     HOMEWORK_DAYS_FUTURE,
 )
 from .evaluations import flatten_evaluations
+from .homework import flatten_homework
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +76,8 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # successful update so nothing is fired for pre-existing grades
         # on startup.
         self._known_evaluation_ids: set[str] | None = None
+        # Same idea for homework assignments and `new_homework` events.
+        self._known_homework_ids: set[str] | None = None
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -188,6 +192,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         self._async_persist_refresh_token()
         self._async_fire_new_grade_events(data.evaluations)
+        self._async_fire_new_homework_events(data.homework)
         return data
 
     def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
@@ -217,6 +222,33 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                         )
 
         self._known_evaluation_ids = current_ids
+
+    def _async_fire_new_homework_events(self, homework: list[dict]) -> None:
+        """Fire one `skolengo_event` (type `new_homework`) per assignment
+        that wasn't present on the previous update, mirroring
+        `_async_fire_new_grade_events`.
+
+        Nothing is fired on the very first update after (re)start, since
+        every already-existing assignment would otherwise look "new".
+        """
+        current_ids = {hw["id"] for hw in homework if hw.get("id")}
+
+        if self._known_homework_ids is not None:
+            new_ids = current_ids - self._known_homework_ids
+            if new_ids:
+                student_name = self.entry.data.get(CONF_STUDENT_NAME, "")
+                for hw in homework:
+                    if hw.get("id") in new_ids:
+                        self.hass.bus.async_fire(
+                            EVENT_SKOLENGO,
+                            {
+                                "type": EVENT_TYPE_NEW_HOMEWORK,
+                                "student_name": student_name,
+                                **flatten_homework(hw),
+                            },
+                        )
+
+        self._known_homework_ids = current_ids
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:
