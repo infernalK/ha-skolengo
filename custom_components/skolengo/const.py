@@ -48,7 +48,7 @@ HOMEWORK_DAYS_FUTURE = 60
 # nested under the day they were *given*, not their due date. Look back this
 # many days from "today" when querying the agenda so assignments given a
 # while ago but due within the HOMEWORK_DAYS_FUTURE window are still found.
-HOMEWORK_AGENDA_LOOKBACK_DAYS = 60
+HOMEWORK_AGENDA_LOOKBACK_DAYS = 30
 
 PLATFORMS = ["calendar", "sensor"]
 

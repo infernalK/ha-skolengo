@@ -781,8 +781,10 @@ class SkolengoClient:
         days = jsonapi_deserialize(doc) or []
         seen: set[str] = set()
         homework: list[dict[str, Any]] = []
+        raw_count = 0
         for day in days:
             for hw in day.get("homeworkAssignments") or []:
+                raw_count += 1
                 hw_id = hw.get("id")
                 if hw_id in seen:
                     continue
@@ -791,6 +793,11 @@ class SkolengoClient:
                     continue
                 seen.add(hw_id)
                 homework.append(hw)
+        _LOGGER.debug(
+            "Agenda fallback: %d day(s) from %s to %s, %d raw homework "
+            "entries, %d kept after dueDate filter",
+            len(days), agenda_start, end, raw_count, len(homework),
+        )
         return homework
 
     def set_homework_done(self, homework_id: str, done: bool) -> None:
