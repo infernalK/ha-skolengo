@@ -127,6 +127,18 @@ def jsonapi_deserialize(document: dict[str, Any]) -> Any:
     return resolve(data)
 
 
+def _homework_in_range(item: dict[str, Any], start: date, end: date) -> bool:
+    """Keep homework within [start, end], and anything with no due date."""
+    raw = item.get("dueDate") or item.get("dueDateTime")
+    if not raw:
+        return True
+    try:
+        due = date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return True
+    return start <= due <= end
+
+
 @dataclass
 class SkolengoTokens:
     access_token: str
@@ -737,8 +749,26 @@ class SkolengoClient:
             "filter[dueDate][GE]": start.isoformat(),
             "filter[dueDate][LE]": end.isoformat(),
         }
-        doc = self._request("GET", "/homework-assignments", params=params)
-        return jsonapi_deserialize(doc) or []
+        try:
+            doc = self._request("GET", "/homework-assignments", params=params)
+        except SkolengoApiError as err:
+            if "getDueDateTime" not in str(err):
+                raise
+            # Server-side bug: Skolengo's API throws a 500 when filtering by
+            # dueDate range if any assignment in scope has no due date set.
+            # Fall back to fetching without the date filter and narrow the
+            # range ourselves, keeping assignments that have no due date.
+            _LOGGER.debug(
+                "Homework date-range filter hit a Skolengo server bug "
+                "(assignment with no due date); retrying without date filter"
+            )
+            doc = self._request(
+                "GET",
+                "/homework-assignments",
+                params={"filter[student.id]": student_id},
+            )
+        items = jsonapi_deserialize(doc) or []
+        return [item for item in items if _homework_in_range(item, start, end)]
 
     def set_homework_done(self, homework_id: str, done: bool) -> None:
         url = f"{API_BASE_URL}/homework-assignments/{homework_id}"
