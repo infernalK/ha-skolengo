@@ -163,6 +163,15 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 # Known to be flaky/unsupported on some schools; never fatal.
                 _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
 
+            periods: list[dict] = []
+            try:
+                periods = client.get_evaluations_settings(self.student_id)
+                _LOGGER.debug("evaluations-settings periods: %s", periods)
+            except SkolengoApiError as err:
+                _LOGGER.debug("Unable to fetch evaluation periods (non-fatal): %s", err)
+            if evaluations:
+                _LOGGER.debug("sample evaluationService raw keys: %s", evaluations[0])
+
             alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
             next_alarm = _compute_next_alarm(lessons, alarm_offset)
 
