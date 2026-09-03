@@ -41,7 +41,7 @@ DEFAULT_UPDATE_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 # "today", mirroring hass-pronote's approach.
 AGENDA_DAYS_PAST = 2
 AGENDA_DAYS_FUTURE = 15
-HOMEWORK_DAYS_FUTURE = 15
+HOMEWORK_DAYS_FUTURE = 60
 
 PLATFORMS = ["calendar", "sensor"]
 
