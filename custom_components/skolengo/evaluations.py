@@ -38,10 +38,10 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
             mark = None
             skills = []
             for result in results:
-                if result.get("nonEvaluated") is not True and isinstance(
-                    result.get("value"), (int, float)
+                if result.get("nonEvaluationReason") is None and isinstance(
+                    result.get("mark"), (int, float)
                 ):
-                    mark = float(result["value"])
+                    mark = float(result["mark"])
                 for skill_result in result.get("subSkillsEvaluationResults") or []:
                     level = skill_result.get("level")
                     skill = (skill_result.get("subSkill") or {}).get("shortLabel")
