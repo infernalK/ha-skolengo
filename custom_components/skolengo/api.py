@@ -886,4 +886,6 @@ class SkolengoClient:
         except SkolengoApiError as err:
             _LOGGER.debug("Evaluations endpoint failed (non-fatal): %s", err)
             return []
-        return jsonapi_deserialize(doc) or []
+        items = jsonapi_deserialize(doc) or []
+        _LOGGER.debug("Raw evaluation-services payload: %s", items)
+        return items
