@@ -28,6 +28,20 @@
     minute: "2-digit",
   });
 
+  // Defines a custom element only if it isn't already registered. Without
+  // this guard, if this file ever executes twice in the same tab (e.g. the
+  // card was also added as a manual Lovelace resource on top of the
+  // integration's auto-registered one), the very first customElements.define()
+  // of the second run throws (a tag can only be defined once per registry),
+  // which aborts the whole script -- silently leaving every card defined
+  // *after* that point stuck on Lovelace's "waiting for custom element"
+  // spinner forever, until the resource duplication is fixed.
+  function safeDefine(tagName, elementClass) {
+    if (!customElements.get(tagName)) {
+      customElements.define(tagName, elementClass);
+    }
+  }
+
   function escapeHtml(value) {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -527,8 +541,8 @@
       return { entity: findFirstCompatibleEntity(hass, "lessons") };
     }
   }
-  customElements.define("skolengo-timetable-card", SkolengoTimetableCard);
-  customElements.define(
+  safeDefine("skolengo-timetable-card", SkolengoTimetableCard);
+  safeDefine(
     "skolengo-timetable-card-editor",
     createConfigEditor(
       [
@@ -655,8 +669,8 @@
       return { entity: findFirstCompatibleEntity(hass, "assignments") };
     }
   }
-  customElements.define("skolengo-homework-card", SkolengoHomeworkCard);
-  customElements.define(
+  safeDefine("skolengo-homework-card", SkolengoHomeworkCard);
+  safeDefine(
     "skolengo-homework-card-editor",
     createConfigEditor(
       [
@@ -812,8 +826,8 @@
       return { entity: findFirstCompatibleEntity(hass, "evaluations"), title: "Notes" };
     }
   }
-  customElements.define("skolengo-evaluations-card", SkolengoEvaluationsCard);
-  customElements.define(
+  safeDefine("skolengo-evaluations-card", SkolengoEvaluationsCard);
+  safeDefine(
     "skolengo-evaluations-card-editor",
     createConfigEditor(
       [
@@ -946,8 +960,8 @@
       return { entity: findFirstCompatibleEntity(hass, "by_subject"), title: "Moyennes" };
     }
   }
-  customElements.define("skolengo-averages-card", SkolengoAveragesCard);
-  customElements.define(
+  safeDefine("skolengo-averages-card", SkolengoAveragesCard);
+  safeDefine(
     "skolengo-averages-card-editor",
     createConfigEditor([TITLE_FIELD, boolField("display_header"), boolField("display_class_average")], "by_subject")
   );
@@ -1082,8 +1096,8 @@
       return { entity: findFirstCompatibleEntity(hass, ABSENCE_LIST_KEYS) };
     }
   }
-  customElements.define("skolengo-absences-card", SkolengoAbsencesCard);
-  customElements.define(
+  safeDefine("skolengo-absences-card", SkolengoAbsencesCard);
+  safeDefine(
     "skolengo-absences-card-editor",
     createConfigEditor(
       [TITLE_FIELD, boolField("display_header"), boolField("display_comment"), MAX_ITEMS_FIELD],
@@ -1096,7 +1110,8 @@
   // ---------------------------------------------------------------------
 
   window.customCards = window.customCards || [];
-  window.customCards.push(
+  const alreadyRegisteredTypes = new Set(window.customCards.map((c) => c.type));
+  const SKOLENGO_CARDS = [
     {
       type: "skolengo-timetable-card",
       name: "Skolengo - Emploi du temps",
@@ -1127,6 +1142,9 @@
       description:
         "Affiche les absences (ou, selon l'entité pointée, les retards / dispenses) depuis un capteur Skolengo.",
       preview: false,
-    }
-  );
+    },
+  ];
+  // Skip cards already present (same double-load scenario as safeDefine
+  // above) so the card picker doesn't show duplicate entries.
+  window.customCards.push(...SKOLENGO_CARDS.filter((c) => !alreadyRegisteredTypes.has(c.type)));
 })();
