@@ -1147,4 +1147,17 @@
   // Skip cards already present (same double-load scenario as safeDefine
   // above) so the card picker doesn't show duplicate entries.
   window.customCards.push(...SKOLENGO_CARDS.filter((c) => !alreadyRegisteredTypes.has(c.type)));
+
+  // Same convention as most other custom Lovelace cards (Mushroom,
+  // button-card, etc.): a one-line console log confirming this script did
+  // execute in this tab. Without it, "a card shows Erreur de configuration"
+  // and "this script never ran in this tab" are indistinguishable from the
+  // Console alone -- this line makes that a one-glance check instead of a
+  // Network-tab investigation.
+  // eslint-disable-next-line no-console
+  console.info(
+    "%c SKOLENGO-CARDS %c chargées ",
+    "color: white; background: #018786; font-weight: 700;",
+    "color: #018786; background: white; font-weight: 700;"
+  );
 })();
