@@ -32,22 +32,26 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
 
     www_dir = os.path.join(os.path.dirname(__file__), "www")
 
+    # The URL below is cache-busted with the integration's own version
+    # (?v=...), so it's safe -- and desirable -- to let browsers cache the
+    # response aggressively: a version bump always gets a brand new URL, so
+    # a stale cached copy can never be served across an update. Conversely,
+    # *without* long-lived caching here, every dashboard load has to reach
+    # the HA server over the network for this file, even for a version
+    # that's already been fetched -- so a transient network hiccup (e.g. on
+    # a mobile connection) can make every bundled card fail at once, until
+    # the browser retries successfully.
     try:
         # Current, non-deprecated API (HA 2024.7+).
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(STATIC_PATH, www_dir, cache_headers=False)]
+            [StaticPathConfig(STATIC_PATH, www_dir, cache_headers=True)]
         )
     except ImportError:
         # Fallback for older Home Assistant Core versions.
-        hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=False)
+        hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=True)
 
-    # Cache-bust on the integration's own version: without this, browsers
-    # (and the frontend's service worker, which runtime-caches this URL)
-    # keep serving whatever they first fetched at this fixed path -- including
-    # a transient failure -- until a hard refresh, even long after the file
-    # on disk has changed or started being served correctly.
     integration = await async_get_integration(hass, DOMAIN)
     js_url = f"{STATIC_PATH}/{JS_FILENAME}?v={integration.version}"
 
