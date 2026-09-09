@@ -1,0 +1,8 @@
+# Dependencies needed to run the test suite (tests/), on top of the
+# integration's own runtime requirements listed in
+# custom_components/skolengo/manifest.json.
+pytest>=7.4
+freezegun>=1.4
+homeassistant>=2024.1.0
+requests>=2.28.0
+beautifulsoup4>=4.11.0

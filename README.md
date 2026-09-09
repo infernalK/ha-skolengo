@@ -222,6 +222,7 @@ Ouvrez une [issue sur GitHub](https://github.com/infernalK/ha-skolengo/issues) e
 
 - la version de Home Assistant et de l'intégration,
 - le journal d'erreur pertinent (`Paramètres → Système → Journaux`), en masquant toute information personnelle,
+- idéalement, les diagnostics de l'intégration (**Paramètres → Appareils et services → Skolengo → ⋮ → Télécharger les diagnostics**) : le jeton de rafraîchissement et les informations identifiant l'élève (nom, date de naissance, photo) sont automatiquement masqués avant l'export,
 - **ne partagez jamais** votre identifiant, mot de passe, jeton d'accès ou de rafraîchissement dans une issue publique.
 
 ## Licence
