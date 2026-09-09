@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_ALARM_OFFSET,
     DOMAIN,
     EVENT_SKOLENGO,
+    EVENT_TYPE_LESSON_ADDED,
     EVENT_TYPE_LESSON_CANCELED,
     EVENT_TYPE_LESSON_MODIFIED,
     EVENT_TYPE_NEW_GRADE,
@@ -82,9 +83,18 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # Same idea for homework assignments and `new_homework` events.
         self._known_homework_ids: set[str] | None = None
         # Lesson snapshots (subset of fields) seen on the previous update,
-        # keyed by lesson id, used to detect cancellations and
-        # reschedules and fire `lesson_canceled`/`lesson_modified` events.
+        # keyed by lesson id, used to detect cancellations, reschedules and
+        # additions, firing `lesson_canceled`/`lesson_modified`/
+        # `lesson_added` events.
         self._known_lessons: dict[str, dict] | None = None
+        # Upper bound (date) of the agenda window fetched on the previous
+        # update. A lesson id absent from `_known_lessons` is only a
+        # genuine addition if its date already sat inside that previous
+        # window -- otherwise it's simply the rolling AGENDA_DAYS_FUTURE
+        # window advancing by a day and exposing a lesson that was always
+        # going to be there, which would otherwise fire `lesson_added` for
+        # every single lesson, once, as it crosses the window's edge.
+        self._known_agenda_end: date | None = None
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -230,7 +240,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._async_persist_refresh_token()
         self._async_fire_new_grade_events(data.evaluations)
         self._async_fire_new_homework_events(data.homework)
-        self._async_fire_lesson_change_events(data.lessons)
+        self._async_fire_lesson_change_events(data.lessons, agenda_end)
         return data
 
     def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
@@ -288,13 +298,14 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         self._known_homework_ids = current_ids
 
-    def _async_fire_lesson_change_events(self, lessons: list[dict]) -> None:
-        """Fire `skolengo_event` (type `lesson_canceled`/`lesson_modified`)
-        when a lesson already seen on a previous update becomes canceled,
-        or has its schedule (time/room/subject/teachers) changed.
+    def _async_fire_lesson_change_events(
+        self, lessons: list[dict], agenda_end: date
+    ) -> None:
+        """Fire `skolengo_event` (type `lesson_canceled`/`lesson_modified`/
+        `lesson_added`) when a lesson already seen on a previous update
+        becomes canceled, has its schedule changed, or when a genuinely new
+        lesson is added.
 
-        A lesson only present now (not seen before) is a new addition to
-        the timetable, not a change, so it's tracked but not reported.
         Nothing is fired on the very first update after (re)start.
         """
         current = {
@@ -305,21 +316,20 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         if self._known_lessons is not None:
             student_name = self.entry.data.get(CONF_STUDENT_NAME, "")
+            previous_agenda_end = self._known_agenda_end
             for lesson in lessons:
                 lesson_id = lesson.get("id")
                 if not lesson_id:
                     continue
                 previous = self._known_lessons.get(lesson_id)
                 if previous is None:
-                    continue
-                snapshot = current[lesson_id]
-                if snapshot == previous:
-                    continue
-                event_type = (
-                    EVENT_TYPE_LESSON_CANCELED
-                    if snapshot["canceled"] and not previous["canceled"]
-                    else EVENT_TYPE_LESSON_MODIFIED
-                )
+                    if not _is_lesson_addition_genuine(lesson, previous_agenda_end):
+                        continue
+                    event_type = EVENT_TYPE_LESSON_ADDED
+                else:
+                    event_type = _classify_lesson_change(previous, current[lesson_id])
+                    if event_type is None:
+                        continue
                 self.hass.bus.async_fire(
                     EVENT_SKOLENGO,
                     {
@@ -330,6 +340,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 )
 
         self._known_lessons = current
+        self._known_agenda_end = agenda_end
 
 
 def _lesson_snapshot(lesson: dict) -> dict:
@@ -346,6 +357,36 @@ def _lesson_snapshot(lesson: dict) -> dict:
             f"{t.get('firstName', '')} {t.get('lastName', '')}".strip() for t in teachers
         ),
     }
+
+
+def _classify_lesson_change(previous: dict, snapshot: dict) -> str | None:
+    """Event type for a lesson whose snapshot changed, or `None` if not."""
+    if snapshot == previous:
+        return None
+    if snapshot["canceled"] and not previous["canceled"]:
+        return EVENT_TYPE_LESSON_CANCELED
+    return EVENT_TYPE_LESSON_MODIFIED
+
+
+def _lesson_date(lesson: dict) -> date | None:
+    start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
+    return dt_util.as_local(start).date() if start else None
+
+
+def _is_lesson_addition_genuine(lesson: dict, previous_agenda_end: date | None) -> bool:
+    """Tell a real timetable addition apart from the agenda window's edge.
+
+    `AGENDA_DAYS_FUTURE` rolls forward by a day on every update, so a
+    lesson dated beyond the *previous* window's end is merely coming into
+    view for the first time -- not a real addition. Only a lesson whose
+    date already sat inside that previous window, yet wasn't returned by
+    it, reflects a genuine change (e.g. a make-up lesson slotted into an
+    already-visible day).
+    """
+    if previous_agenda_end is None:
+        return False
+    lesson_date = _lesson_date(lesson)
+    return lesson_date is not None and lesson_date <= previous_agenda_end
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:

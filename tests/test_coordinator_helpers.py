@@ -1,9 +1,17 @@
+from datetime import date
+
 from freezegun import freeze_time
 
 from custom_components.skolengo.coordinator import (
+    _classify_lesson_change,
     _compute_next_alarm,
     _find_student_info,
+    _is_lesson_addition_genuine,
     _lesson_snapshot,
+)
+from custom_components.skolengo.const import (
+    EVENT_TYPE_LESSON_CANCELED,
+    EVENT_TYPE_LESSON_MODIFIED,
 )
 
 
@@ -135,3 +143,65 @@ def test_next_alarm_ignores_canceled_lessons():
 def test_next_alarm_is_none_without_upcoming_lessons():
     assert _compute_next_alarm([], offset_minutes=30) is None
     assert _compute_next_alarm([_lesson("2026-09-10T07:00:00+00:00", canceled=True)], 0) is None
+
+
+# --- _classify_lesson_change ------------------------------------------------
+
+
+def test_classify_lesson_change_returns_none_when_unchanged():
+    snapshot = _lesson_snapshot({"startDateTime": "2026-09-10T08:00:00+00:00"})
+
+    assert _classify_lesson_change(snapshot, snapshot) is None
+
+
+def test_classify_lesson_change_detects_new_cancellation():
+    previous = _lesson_snapshot({"canceled": False})
+    snapshot = _lesson_snapshot({"canceled": True})
+
+    assert _classify_lesson_change(previous, snapshot) == EVENT_TYPE_LESSON_CANCELED
+
+
+def test_classify_lesson_change_detects_reschedule():
+    previous = _lesson_snapshot({"startDateTime": "2026-09-10T08:00:00+00:00"})
+    snapshot = _lesson_snapshot({"startDateTime": "2026-09-10T09:00:00+00:00"})
+
+    assert _classify_lesson_change(previous, snapshot) == EVENT_TYPE_LESSON_MODIFIED
+
+
+def test_classify_lesson_change_treats_uncancel_as_modified():
+    # Reinstating a canceled lesson is a real change worth notifying about,
+    # just not the `lesson_canceled` type.
+    previous = _lesson_snapshot({"canceled": True})
+    snapshot = _lesson_snapshot({"canceled": False})
+
+    assert _classify_lesson_change(previous, snapshot) == EVENT_TYPE_LESSON_MODIFIED
+
+
+# --- _is_lesson_addition_genuine ---------------------------------------------
+
+
+def test_addition_is_not_genuine_without_a_previous_window():
+    lesson = {"startDateTime": "2026-09-10T08:00:00+00:00"}
+
+    assert _is_lesson_addition_genuine(lesson, None) is False
+
+
+def test_addition_is_not_genuine_when_beyond_the_previous_window():
+    # This is the rolling-window case: AGENDA_DAYS_FUTURE moved forward by
+    # a day, so this lesson is merely coming into view for the first time.
+    lesson = {"startDateTime": "2026-09-26T08:00:00+00:00"}
+
+    assert _is_lesson_addition_genuine(lesson, date(2026, 9, 25)) is False
+
+
+def test_addition_is_genuine_when_inside_the_previous_window():
+    # The lesson's date was already visible in the previous fetch's
+    # window, yet the lesson itself wasn't returned -- a real addition
+    # (e.g. a make-up lesson slotted into an already-visible day).
+    lesson = {"startDateTime": "2026-09-20T08:00:00+00:00"}
+
+    assert _is_lesson_addition_genuine(lesson, date(2026, 9, 25)) is True
+
+
+def test_addition_is_not_genuine_without_a_parseable_date():
+    assert _is_lesson_addition_genuine({}, date(2026, 9, 25)) is False
