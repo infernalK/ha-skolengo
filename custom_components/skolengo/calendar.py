@@ -76,7 +76,6 @@ class SkolengoTimetableCalendar(
 
     _attr_has_entity_name = True
     _attr_translation_key = "timetable"
-    _attr_icon = "mdi:timetable"
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
@@ -127,7 +126,6 @@ class SkolengoHomeworkCalendar(
 
     _attr_has_entity_name = True
     _attr_translation_key = "homework"
-    _attr_icon = "mdi:notebook-edit-outline"
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)

@@ -1,5 +1,11 @@
 # Skolengo pour Home Assistant
 
+[![Tests](https://github.com/infernalK/ha-skolengo/actions/workflows/tests.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/tests.yaml)
+[![Validate with hassfest](https://github.com/infernalK/ha-skolengo/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/hassfest.yaml)
+[![Validate with HACS](https://github.com/infernalK/ha-skolengo/actions/workflows/hacs.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/hacs.yaml)
+[![GitHub release](https://img.shields.io/github/v/release/infernalK/ha-skolengo)](https://github.com/infernalK/ha-skolengo/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Intégration **communautaire et non officielle** pour [Skolengo](https://www.skolengo.com/), permettant de récupérer dans Home Assistant l'emploi du temps, les devoirs, les absences et (dans la mesure du possible) les notes d'un élève.
 
 > **Avertissement** : ce projet n'est ni développé, ni maintenu, ni approuvé par Skolengo ou Index Education. Il s'appuie sur une analyse non officielle de l'API utilisée par l'application mobile Skolengo, qui peut changer ou être bloquée à tout moment sans préavis. Utilisez-le à vos risques et périls, avec vos propres identifiants.

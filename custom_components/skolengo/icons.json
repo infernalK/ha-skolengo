@@ -1,0 +1,22 @@
+{
+  "entity": {
+    "sensor": {
+      "student_class": { "default": "mdi:account-school-outline" },
+      "next_lesson": { "default": "mdi:book-open-variant" },
+      "next_alarm": { "default": "mdi:alarm" },
+      "timetable_today": { "default": "mdi:calendar-today-outline" },
+      "timetable_next_day": { "default": "mdi:timetable" },
+      "today_lesson_count": { "default": "mdi:calendar-today" },
+      "homework_due": { "default": "mdi:notebook-edit-outline" },
+      "absences": { "default": "mdi:account-off-outline" },
+      "delays": { "default": "mdi:clock-alert-outline" },
+      "exemptions": { "default": "mdi:hand-back-right-off-outline" },
+      "evaluations": { "default": "mdi:notebook-outline" },
+      "average_grade": { "default": "mdi:school-outline" }
+    },
+    "calendar": {
+      "timetable": { "default": "mdi:timetable" },
+      "homework": { "default": "mdi:notebook-edit-outline" }
+    }
+  }
+}

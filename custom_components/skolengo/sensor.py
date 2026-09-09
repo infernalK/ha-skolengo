@@ -90,7 +90,6 @@ class SkolengoStudentClassSensor(SkolengoSensorBase):
     mid-year class change without needing to reconfigure the integration.
     """
 
-    _attr_icon = "mdi:account-school-outline"
     _attr_translation_key = "student_class"
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -114,7 +113,6 @@ class SkolengoStudentClassSensor(SkolengoSensorBase):
 class SkolengoNextLessonSensor(SkolengoSensorBase):
     """Next upcoming (non-canceled) lesson."""
 
-    _attr_icon = "mdi:book-open-variant"
     _attr_translation_key = "next_lesson"
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -164,7 +162,6 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
     configurable lead time (see the integration's Options, default 60 min).
     """
 
-    _attr_icon = "mdi:alarm"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "next_alarm"
 
@@ -234,7 +231,6 @@ class SkolengoTimetableTodaySensor(SkolengoTimetableDaySensorBase):
     wall-mounted dashboard.
     """
 
-    _attr_icon = "mdi:calendar-today-outline"
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "timetable_today"
 
@@ -264,7 +260,6 @@ class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
     without talking to the Calendar API.
     """
 
-    _attr_icon = "mdi:timetable"
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "timetable_next_day"
 
@@ -302,7 +297,6 @@ class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
 class SkolengoTodayLessonCountSensor(SkolengoSensorBase):
     """Number of lessons scheduled today."""
 
-    _attr_icon = "mdi:calendar-today"
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "today_lesson_count"
 
@@ -325,7 +319,6 @@ class SkolengoTodayLessonCountSensor(SkolengoSensorBase):
 class SkolengoHomeworkDueSensor(SkolengoSensorBase):
     """Number of not-yet-done homework assignments due soon."""
 
-    _attr_icon = "mdi:notebook-edit-outline"
     _attr_native_unit_of_measurement = "devoirs"
     _attr_translation_key = "homework_due"
 
@@ -385,7 +378,6 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
     Kosmos ENT web pages, not the mobile-app API this integration talks to.
     """
 
-    _attr_icon = "mdi:account-off-outline"
     _attr_native_unit_of_measurement = "absences"
     _attr_translation_key = "absences"
 
@@ -407,7 +399,6 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
 class SkolengoDelaysSensor(SkolengoSensorBase):
     """Number of recorded lateness ("retards") records."""
 
-    _attr_icon = "mdi:clock-alert-outline"
     _attr_native_unit_of_measurement = "retards"
     _attr_translation_key = "delays"
 
@@ -429,7 +420,6 @@ class SkolengoDelaysSensor(SkolengoSensorBase):
 class SkolengoExemptionsSensor(SkolengoSensorBase):
     """Number of recorded exemptions ("dispenses", e.g. from PE)."""
 
-    _attr_icon = "mdi:hand-back-right-off-outline"
     _attr_native_unit_of_measurement = "dispenses"
     _attr_translation_key = "exemptions"
     _attr_entity_registry_enabled_default = False
@@ -530,7 +520,6 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
     simply report 0 with an empty list.
     """
 
-    _attr_icon = "mdi:notebook-outline"
     _attr_native_unit_of_measurement = "notes"
     _attr_translation_key = "evaluations"
 
@@ -655,7 +644,6 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
     the naive fallback used for the overall state.
     """
 
-    _attr_icon = "mdi:school-outline"
     _attr_translation_key = "average_grade"
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
