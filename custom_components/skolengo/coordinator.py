@@ -26,6 +26,8 @@ from .const import (
     DEFAULT_ALARM_OFFSET,
     DOMAIN,
     EVENT_SKOLENGO,
+    EVENT_TYPE_LESSON_CANCELED,
+    EVENT_TYPE_LESSON_MODIFIED,
     EVENT_TYPE_NEW_GRADE,
     EVENT_TYPE_NEW_HOMEWORK,
     HOMEWORK_DAYS_FUTURE,
@@ -79,6 +81,10 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._known_evaluation_ids: set[str] | None = None
         # Same idea for homework assignments and `new_homework` events.
         self._known_homework_ids: set[str] | None = None
+        # Lesson snapshots (subset of fields) seen on the previous update,
+        # keyed by lesson id, used to detect cancellations and
+        # reschedules and fire `lesson_canceled`/`lesson_modified` events.
+        self._known_lessons: dict[str, dict] | None = None
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -224,6 +230,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._async_persist_refresh_token()
         self._async_fire_new_grade_events(data.evaluations)
         self._async_fire_new_homework_events(data.homework)
+        self._async_fire_lesson_change_events(data.lessons)
         return data
 
     def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
@@ -280,6 +287,65 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                         )
 
         self._known_homework_ids = current_ids
+
+    def _async_fire_lesson_change_events(self, lessons: list[dict]) -> None:
+        """Fire `skolengo_event` (type `lesson_canceled`/`lesson_modified`)
+        when a lesson already seen on a previous update becomes canceled,
+        or has its schedule (time/room/subject/teachers) changed.
+
+        A lesson only present now (not seen before) is a new addition to
+        the timetable, not a change, so it's tracked but not reported.
+        Nothing is fired on the very first update after (re)start.
+        """
+        current = {
+            lesson["id"]: _lesson_snapshot(lesson)
+            for lesson in lessons
+            if lesson.get("id")
+        }
+
+        if self._known_lessons is not None:
+            student_name = self.entry.data.get(CONF_STUDENT_NAME, "")
+            for lesson in lessons:
+                lesson_id = lesson.get("id")
+                if not lesson_id:
+                    continue
+                previous = self._known_lessons.get(lesson_id)
+                if previous is None:
+                    continue
+                snapshot = current[lesson_id]
+                if snapshot == previous:
+                    continue
+                event_type = (
+                    EVENT_TYPE_LESSON_CANCELED
+                    if snapshot["canceled"] and not previous["canceled"]
+                    else EVENT_TYPE_LESSON_MODIFIED
+                )
+                self.hass.bus.async_fire(
+                    EVENT_SKOLENGO,
+                    {
+                        "type": event_type,
+                        "student_name": student_name,
+                        **lesson,
+                    },
+                )
+
+        self._known_lessons = current
+
+
+def _lesson_snapshot(lesson: dict) -> dict:
+    """Subset of lesson fields compared across updates to detect changes."""
+    subject = lesson.get("subject") or {}
+    teachers = lesson.get("teachers") or []
+    return {
+        "canceled": bool(lesson.get("canceled")),
+        "startDateTime": lesson.get("startDateTime"),
+        "endDateTime": lesson.get("endDateTime"),
+        "location": lesson.get("location") or lesson.get("room"),
+        "subject": subject.get("label") or lesson.get("title"),
+        "teachers": sorted(
+            f"{t.get('firstName', '')} {t.get('lastName', '')}".strip() for t in teachers
+        ),
+    }
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:

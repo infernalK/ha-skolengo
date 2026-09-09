@@ -19,16 +19,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
-- **Événement `skolengo_event`** (types `new_grade` et `new_homework`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît (rien n'est émis pour ce qui est déjà présent lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Exemple de déclencheur :
-  ```yaml
-  trigger:
-    - platform: event
-      event_type: skolengo_event
-      event_data:
-        type: new_grade
-  ```
-  Les données de l'événement `new_grade` contiennent notamment `student_name`, `subject`, `title`, `mark`, `scale`, `date`.
-  Les données de l'événement `new_homework` contiennent notamment `student_name`, `subject`, `title`, `due_date`, `teacher`, `html`.
+- **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled` et `lesson_modified`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, ou qu'un cours déjà connu est annulé ou change d'horaire/salle/prof (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
 - **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
@@ -148,6 +139,82 @@ title: Retards
 ```
 
 **Note** : les "observations", punitions et sanctions visibles sur le portail web complet de Skolengo (rubrique "Vie scolaire") ne sont couvertes par aucun endpoint exposé par l'API utilisée ici (celle de l'application mobile, `api.skolengo.com`) — elles ne semblent accessibles que via les pages web propres à l'ENT Kosmos de l'établissement. Les cartes absences/retards/dispenses représentent donc la couverture maximale possible actuellement pour la "vie scolaire", pas une limitation volontaire.
+
+## Exemples d'automatisations
+
+Les quatre types d'événements sont émis sur `skolengo_event`, distingués par `event_data.type`. Quelques automatisations complètes pour s'en servir :
+
+**Nouvelle note**
+```yaml
+alias: Skolengo - Nouvelle note
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: new_grade
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Nouvelle note - {{ trigger.event.data.student_name }}"
+      message: >-
+        {{ trigger.event.data.subject }} : {{ trigger.event.data.mark }}/{{ trigger.event.data.scale }}
+        ({{ trigger.event.data.title }})
+```
+Données disponibles notamment : `student_name`, `subject`, `title`, `mark`, `scale`, `date`.
+
+**Nouveau devoir**
+```yaml
+alias: Skolengo - Nouveau devoir
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: new_homework
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Nouveau devoir - {{ trigger.event.data.student_name }}"
+      message: >-
+        {{ trigger.event.data.subject }} pour le {{ trigger.event.data.due_date }}
+```
+Données disponibles notamment : `student_name`, `subject`, `title`, `due_date`, `teacher`, `html`.
+
+**Cours annulé**
+```yaml
+alias: Skolengo - Cours annulé
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: lesson_canceled
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Cours annulé - {{ trigger.event.data.student_name }}"
+      message: >-
+        {{ trigger.event.data.subject.label if trigger.event.data.subject else '' }}
+        de {{ trigger.event.data.startDateTime }} à {{ trigger.event.data.endDateTime }}
+```
+
+**Cours modifié (horaire, salle ou professeur)**
+```yaml
+alias: Skolengo - Cours modifié
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: lesson_modified
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Cours modifié - {{ trigger.event.data.student_name }}"
+      message: >-
+        {{ trigger.event.data.subject.label if trigger.event.data.subject else '' }}
+        déplacé/modifié : {{ trigger.event.data.startDateTime }} - {{ trigger.event.data.location or trigger.event.data.room }}
+```
+Données disponibles pour `lesson_canceled`/`lesson_modified`, notamment : `student_name`, `subject` (objet avec `label`), `startDateTime`, `endDateTime`, `location`/`room`, `teachers`, `canceled`.
+
+Ces deux derniers événements ne sont émis que pour un cours déjà vu lors d'une mise à jour précédente (pas pour l'apparition d'un cours totalement nouveau dans l'emploi du temps), et rien n'est émis lors du tout premier chargement après un (re)démarrage.
 
 ## Signaler un problème
 
