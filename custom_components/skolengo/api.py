@@ -289,7 +289,12 @@ class SkolengoClient:
 
         auth_url = resp.url
         code = cls._walk_redirect_chain(
-            session, resp, auth_url, username=username, password=password
+            session,
+            resp,
+            auth_url,
+            username=username,
+            password=password,
+            school_name=school.name,
         )
 
         if not code:
@@ -351,6 +356,7 @@ class SkolengoClient:
         username: str,
         password: str,
         allow_relay: bool,
+        school_name: str = "",
     ) -> tuple[requests.Response, bool]:
         """Parse a generic CAS/SSO page and POST credentials (or relay it).
 
@@ -440,10 +446,11 @@ class SkolengoClient:
         # "student/parent" option, since that's what the vast majority of
         # Home Assistant users authenticating here will be.
         if not username_field and not password_field:
+            school_level = cls._guess_school_level(school_name)
             for group_name, options in radio_groups.items():
                 if group_name in form_data:
                     continue  # already had a `checked` option
-                choice = cls._pick_wayf_radio_option(options)
+                choice = cls._pick_wayf_radio_option(options, school_level)
                 if choice is not None:
                     form_data[group_name] = choice
 
@@ -481,8 +488,27 @@ class SkolengoClient:
     # identity-provider picker.
     _WAYF_PREFERRED_KEYWORDS = ("eleve", "élève", "parent", "educonnect", "éduconnect", "famille")
 
+    # Keywords used to guess whether a school is a primary school ("1er
+    # degré") or a secondary school (collège/lycée, "2nd degré") from its
+    # name, so that a WAYF picker listing separate entries per school level
+    # (see `_pick_wayf_radio_option`) can be steered towards the right one.
+    _SECONDARY_SCHOOL_KEYWORDS = ("collège", "college", "lycée", "lycee")
+    _PRIMARY_SCHOOL_KEYWORDS = ("école", "ecole", "primaire", "maternelle")
+
+    @classmethod
+    def _guess_school_level(cls, school_name: str) -> str | None:
+        """Best-effort guess of "primaire" vs "secondaire" from a school name."""
+        lowered = school_name.lower()
+        if any(keyword in lowered for keyword in cls._SECONDARY_SCHOOL_KEYWORDS):
+            return "secondaire"
+        if any(keyword in lowered for keyword in cls._PRIMARY_SCHOOL_KEYWORDS):
+            return "primaire"
+        return None
+
     @staticmethod
-    def _pick_wayf_radio_option(options: list[tuple[Any, str]]) -> str | None:
+    def _pick_wayf_radio_option(
+        options: list[tuple[Any, str]], school_level: str | None = None
+    ) -> str | None:
         if not options:
             return None
 
@@ -500,16 +526,57 @@ class SkolengoClient:
                     label = root.find("label", attrs={"for": input_id})
                 if label is not None:
                     parts.append(label.get_text())
+            # Some WAYF pages (e.g. Eclat-BFC) group options under a
+            # `<fieldset><legend>` that carries the "Élève"/"Parent"
+            # wording, while each individual option only names a school
+            # level/académie (e.g. "des collèges et des lycées") with no
+            # student/parent keyword of its own. Fold the legend text in so
+            # such options are still recognized.
+            fieldset = input_tag.find_parent("fieldset")
+            if fieldset is not None:
+                legend = fieldset.find("legend")
+                if legend is not None:
+                    parts.append(legend.get_text())
             return " ".join(parts).lower()
 
-        for input_tag, value in options:
-            text = option_text(input_tag)
-            if any(keyword in text for keyword in SkolengoClient._WAYF_PREFERRED_KEYWORDS):
-                return value
+        texts = [(input_tag, value, option_text(input_tag)) for input_tag, value in options]
 
-        # No confident match: fall back to the first listed option rather
-        # than failing outright.
-        return options[0][1]
+        def matching(candidates: list[tuple[Any, str, str]]) -> str | None:
+            for _input_tag, value, text in candidates:
+                if any(kw in text for kw in SkolengoClient._WAYF_PREFERRED_KEYWORDS):
+                    return value
+            return None
+
+        # Some académies list a *separate* WAYF entry per school level
+        # within the same "Élève"/"Parent" category (e.g. "écoles
+        # primaires" vs "collèges et lycées"). When we can guess the
+        # school's level, prefer options that match it, so a collège/lycée
+        # student isn't defaulted to a primary-school identity provider (or
+        # vice versa). Only narrow the candidate list when doing so still
+        # leaves at least one option, to avoid ever making the pick worse
+        # than the unfiltered fallback below.
+        level_filtered = texts
+        if school_level == "secondaire":
+            level_filtered = [
+                t for t in texts if not any(kw in t[2] for kw in SkolengoClient._PRIMARY_SCHOOL_KEYWORDS)
+            ] or texts
+        elif school_level == "primaire":
+            level_filtered = [
+                t for t in texts if any(kw in t[2] for kw in SkolengoClient._PRIMARY_SCHOOL_KEYWORDS)
+            ] or texts
+
+        choice = matching(level_filtered)
+        if choice is not None:
+            return choice
+        # Level filtering left no keyword match: retry against the full,
+        # unfiltered option list before giving up on keyword matching.
+        choice = matching(texts)
+        if choice is not None:
+            return choice
+
+        # No confident match: fall back to the first listed option (within
+        # the level-filtered set if any) rather than failing outright.
+        return level_filtered[0][1]
 
     @classmethod
     def _walk_redirect_chain(
@@ -519,6 +586,7 @@ class SkolengoClient:
         current_url: str,
         username: str,
         password: str,
+        school_name: str = "",
     ) -> str | None:
         """Manually follow redirects (since requests can't follow a custom
         non-HTTP URI scheme) until we hit the redirect_uri carrying `code`,
@@ -563,7 +631,7 @@ class SkolengoClient:
 
                 prev_resp = resp
                 resp, was_credentials = cls._fill_and_submit_form(
-                    session, resp, username, password, allow_relay=True
+                    session, resp, username, password, allow_relay=True, school_name=school_name
                 )
                 if was_credentials and credentials_submitted:
                     # A credential-looking login form was shown twice in a
