@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from bs4 import BeautifulSoup
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -47,6 +48,32 @@ def _parse_dt(value: str | None) -> datetime | None:
     return dt_util.as_local(parsed)
 
 
+def _html_to_text(value: str) -> str:
+    """Render a Skolengo HTML text fragment as plain text.
+
+    Homework/lesson content comes back as an HTML document (e.g.
+    `<html><body><p>...</p></body></html>`), but the calendar event
+    description is a plain-text field: rendered as-is, the tags show up
+    literally instead of being interpreted.
+    """
+    if not value:
+        return ""
+    soup = BeautifulSoup(value, "html.parser")
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+    for block in soup.find_all(["p", "div", "li", "tr"]):
+        block.append("\n")
+    text = soup.get_text()
+    # Collapse the blank lines left between block elements (e.g. consecutive
+    # <p>) down to at most one.
+    cleaned: list[str] = []
+    for line in (line.strip() for line in text.splitlines()):
+        if not line and (not cleaned or not cleaned[-1]):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def _lesson_summary(lesson: dict) -> str:
     subject = lesson.get("subject") or {}
     title = subject.get("label") or lesson.get("title") or "Cours"
@@ -65,7 +92,7 @@ def _lesson_description(lesson: dict) -> str:
         if names.strip():
             parts.append(f"Professeur(s): {names}")
     if lesson.get("content"):
-        parts.append(str(lesson["content"]))
+        parts.append(_html_to_text(str(lesson["content"])))
     return "\n".join(parts)
 
 
@@ -169,7 +196,9 @@ class SkolengoHomeworkCalendar(
                     start=due_start.date(),
                     end=due_end.date(),
                     summary=f"{title}{done}",
-                    description=str(hw.get("assignmentText") or hw.get("html") or ""),
+                    description=_html_to_text(
+                        str(hw.get("assignmentText") or hw.get("html") or "")
+                    ),
                     uid=str(hw.get("id")) if hw.get("id") else None,
                 )
             )
