@@ -148,7 +148,7 @@ class SkolengoHomeworkCalendar(
     def _events_between(self, start: datetime, end: datetime) -> list[CalendarEvent]:
         events: list[CalendarEvent] = []
         for hw in self.coordinator.data.homework if self.coordinator.data else []:
-            due_raw = hw.get("dueDate")
+            due_raw = hw.get("dueDate") or hw.get("dueDateTime")
             if not due_raw:
                 continue
             try:
