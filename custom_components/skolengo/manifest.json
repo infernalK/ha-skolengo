@@ -18,5 +18,5 @@
     "beautifulsoup4>=4.11.0",
     "requests>=2.28.0"
   ],
-  "version": "1.0.30"
+  "version": "1.0.31"
 }
