@@ -33,7 +33,7 @@ from .const import (
     EVENT_TYPE_NEW_HOMEWORK,
     HOMEWORK_DAYS_FUTURE,
 )
-from .evaluations import flatten_evaluations
+from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
 
 _LOGGER = logging.getLogger(__name__)
@@ -174,9 +174,21 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 _LOGGER.debug("Unable to fetch absences (non-fatal): %s", err)
 
             periods: list[dict] = []
+            level_labels: dict[str, str] = {}
             try:
                 settings = client.get_evaluations_settings(self.student_id)
                 periods = (settings[0].get("periods") or []) if settings else []
+                # The school's own configured label for each skill
+                # mastery-level code (schools can customize the wording),
+                # applied to raw evaluations below via
+                # `apply_skill_level_labels()`; more accurate than our
+                # generic fallback translation.
+                skills_setting = (settings[0].get("skillsSetting") or {}) if settings else {}
+                for acquisition_level in skills_setting.get("skillAcquisitionLevels") or []:
+                    level_code = acquisition_level.get("level")
+                    label = acquisition_level.get("label") or acquisition_level.get("shortLabel")
+                    if level_code and label:
+                        level_labels[level_code] = label
             except SkolengoApiError as err:
                 # Known to be flaky/unsupported on some schools; never fatal.
                 _LOGGER.debug("Unable to fetch evaluation periods (non-fatal): %s", err)
@@ -208,6 +220,8 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                     evaluations = client.get_evaluations(self.student_id)
                 except SkolengoApiError as err:
                     _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
+
+            apply_skill_level_labels(evaluations, level_labels)
 
             alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
             next_alarm = _compute_next_alarm(lessons, alarm_offset)

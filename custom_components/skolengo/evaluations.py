@@ -8,6 +8,44 @@ from __future__ import annotations
 from .colors import normalize_color, normalize_mastery_level
 
 
+def _iter_evaluation_results(evaluation: dict) -> list[dict]:
+    """Normalize `evaluation.evaluationResult(s)` to a flat list.
+
+    The API doc names this relationship "evaluationResult" (singular),
+    but it can still resolve to a list of result records.
+    """
+    result_data = evaluation.get("evaluationResult")
+    if result_data is None:
+        return evaluation.get("evaluationResults") or []
+    if isinstance(result_data, list):
+        return result_data
+    return [result_data]
+
+
+def apply_skill_level_labels(evaluation_services: list[dict], level_labels: dict[str, str]) -> None:
+    """Replace raw skill mastery-level codes with the school's own labels.
+
+    `/evaluations-settings` -> `skillsSetting.skillAcquisitionLevels` carries
+    the establishment's own configured label for each level code (schools
+    can and do customize the wording), which is more accurate than our
+    generic fallback translation in `normalize_mastery_level()`. Mutates
+    `evaluation_services` in place so both `flatten_evaluations()` call
+    sites (coordinator event-diffing and sensor display) pick it up.
+    Codes not present in `level_labels` (e.g. the settings fetch failed or
+    is flaky for this school) are left untouched, so `flatten_evaluations()`
+    still falls back to the generic translation for them.
+    """
+    if not level_labels:
+        return
+    for evaluation_service in evaluation_services:
+        for evaluation in evaluation_service.get("evaluations") or []:
+            for result in _iter_evaluation_results(evaluation):
+                for skill_result in result.get("subSkillsEvaluationResults") or []:
+                    level = skill_result.get("level")
+                    if level in level_labels:
+                        skill_result["level"] = level_labels[level]
+
+
 def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
     """Flatten evaluation-services -> evaluations into one list.
 
@@ -23,21 +61,14 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
         subject_student_average = evaluation_service.get("studentAverage")
         subject_class_average = evaluation_service.get("average")
         subject_coefficient = evaluation_service.get("coefficient")
+        teachers = [
+            f"{t.get('firstName', '')} {t.get('lastName', '')}".strip()
+            for t in (evaluation_service.get("teachers") or [])
+        ]
         for evaluation in evaluation_service.get("evaluations") or []:
-            # The API doc names this relationship "evaluationResult"
-            # (singular), but it can still resolve to a list of result
-            # records -- normalize either shape.
-            result_data = evaluation.get("evaluationResult")
-            if result_data is None:
-                results = evaluation.get("evaluationResults") or []
-            elif isinstance(result_data, list):
-                results = result_data
-            else:
-                results = [result_data]
-
             mark = None
             skills = []
-            for result in results:
+            for result in _iter_evaluation_results(evaluation):
                 if result.get("nonEvaluationReason") is None and isinstance(
                     result.get("mark"), (int, float)
                 ):
@@ -59,6 +90,7 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                     "coefficient": evaluation.get("coefficient"),
                     "class_average": evaluation.get("average"),
                     "skills": skills,
+                    "teachers": teachers,
                     # Skolengo's own officially-computed average for this
                     # subject over the period (coefficient-weighted by the
                     # school, not by us) -- see `_official_average()` in

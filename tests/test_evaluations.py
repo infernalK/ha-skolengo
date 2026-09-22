@@ -1,4 +1,4 @@
-from custom_components.skolengo.evaluations import flatten_evaluations
+from custom_components.skolengo.evaluations import apply_skill_level_labels, flatten_evaluations
 
 
 def _evaluation_service(**overrides):
@@ -120,6 +120,74 @@ def test_skill_level_enum_code_is_translated_to_french_label():
     )
 
     [item] = flatten_evaluations([service])
+
+    assert item["skills"] == [{"skill": "Débat", "level": "Maîtrise satisfaisante"}]
+
+
+def test_teachers_are_extracted_from_evaluation_service():
+    service = _evaluation_service(
+        teachers=[{"firstName": "Eric", "lastName": "Gisbert"}],
+        evaluations=[{"id": "eval-6", "evaluationResult": {"mark": 12, "nonEvaluationReason": None}}],
+    )
+
+    [item] = flatten_evaluations([service])
+
+    assert item["teachers"] == ["Eric Gisbert"]
+
+
+def test_apply_skill_level_labels_prefers_school_configured_label():
+    # The school's own `/evaluations-settings` labels take priority over
+    # our generic fallback translation in normalize_mastery_level().
+    service = _evaluation_service(
+        evaluations=[
+            {
+                "id": "eval-7",
+                "evaluationResult": {
+                    "mark": None,
+                    "nonEvaluationReason": None,
+                    "subSkillsEvaluationResults": [
+                        {
+                            "level": "SATISFACTORY_MASTERY",
+                            "subSkill": {"shortLabel": "Débat"},
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+    services = [service]
+
+    apply_skill_level_labels(services, {"SATISFACTORY_MASTERY": "Maîtrise correcte"})
+    [item] = flatten_evaluations(services)
+
+    assert item["skills"] == [{"skill": "Débat", "level": "Maîtrise correcte"}]
+
+
+def test_apply_skill_level_labels_falls_back_when_code_unmapped():
+    # A code missing from the school's settings (flaky/unsupported school)
+    # is left untouched, so flatten_evaluations()'s generic translation
+    # still applies -- it must never end up unreadable.
+    service = _evaluation_service(
+        evaluations=[
+            {
+                "id": "eval-8",
+                "evaluationResult": {
+                    "mark": None,
+                    "nonEvaluationReason": None,
+                    "subSkillsEvaluationResults": [
+                        {
+                            "level": "SATISFACTORY_MASTERY",
+                            "subSkill": {"shortLabel": "Débat"},
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+    services = [service]
+
+    apply_skill_level_labels(services, {"VERY_GOOD_MASTERY": "Excellent"})
+    [item] = flatten_evaluations(services)
 
     assert item["skills"] == [{"skill": "Débat", "level": "Maîtrise satisfaisante"}]
 

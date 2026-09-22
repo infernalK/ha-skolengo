@@ -66,9 +66,9 @@ Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'in
 
 ## Cartes Lovelace intégrées
 
-Cette intégration embarque 5 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
+Cette intégration embarque 6 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
 
-Contrairement à Pronote, Skolengo ne distingue pas notes numériques / évaluations de compétences (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. Le périmètre est donc volontairement de **5 cartes** (au lieu de 7) : pas de carte "évaluations" séparée de la carte "notes", pas de carte "retards".
+Contrairement à Pronote, Skolengo ne distingue pas notes numériques / évaluations de compétences au niveau de l'API (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. `skolengo-evaluations-card` ("Notes") affiche donc les deux, mais `skolengo-competencies-card` ("Compétences") permet de n'afficher que les évaluations de compétences sur une carte séparée, pour qui préfère les dissocier. Il n'y a en revanche pas de carte "retards" dédiée : `skolengo-absences-card` couvre ce besoin en la pointant sur le bon capteur (voir plus bas).
 
 Elles sont **chargées automatiquement** dès que l'intégration est configurée : aucune ressource Lovelace à ajouter manuellement (`skolengo-cards.js` est servi par l'intégration elle-même et enregistré comme module JS au démarrage de Home Assistant).
 
@@ -111,6 +111,17 @@ type: custom:skolengo-evaluations-card
 entity: sensor.skolengo_..._notes
 title: Notes
 display_class_average: true
+```
+
+### `skolengo-competencies-card`
+
+Uniquement les évaluations de compétences (niveaux de maîtrise), groupées par matière comme la vue "Compétences" de Skolengo, à associer au même capteur `..._notes` que `skolengo-evaluations-card`.
+
+```yaml
+type: custom:skolengo-competencies-card
+entity: sensor.skolengo_..._notes
+title: Compétences
+display_teacher: true
 ```
 
 ### `skolengo-averages-card`

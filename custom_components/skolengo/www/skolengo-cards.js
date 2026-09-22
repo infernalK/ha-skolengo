@@ -218,6 +218,10 @@
       background: color-mix(in srgb, var(--primary-color) 15%, transparent);
       color: var(--primary-color);
     }
+    .skolengo-badge.info {
+      background: color-mix(in srgb, var(--info-color, dodgerblue) 18%, transparent);
+      color: var(--info-color, dodgerblue);
+    }
     .skolengo-strike {
       text-decoration: line-through;
     }
@@ -237,6 +241,23 @@
       border-radius: 10px;
       background: color-mix(in srgb, var(--item-color, var(--primary-color)) 18%, transparent);
       color: var(--primary-text-color);
+    }
+    .skolengo-competencies {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .skolengo-competency-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .skolengo-competency-label {
+      color: var(--primary-text-color);
+      font-size: 0.92em;
     }
     .skolengo-done-section {
       margin-top: 14px;
@@ -699,6 +720,7 @@
         display_date: true,
         display_coefficient: true,
         display_class_average: true,
+        display_teacher: false,
         max_items: 15,
         ...config,
       };
@@ -778,6 +800,9 @@
           if (this._config.display_class_average && ev.class_average !== null && ev.class_average !== undefined) {
             metaBits.push(`Moy. classe : ${escapeHtml(ev.class_average)}`);
           }
+          if (this._config.display_teacher && Array.isArray(ev.teachers) && ev.teachers.length) {
+            metaBits.push(escapeHtml(ev.teachers.join(", ")));
+          }
 
           let markHtml;
           if (ev.mark !== null && ev.mark !== undefined) {
@@ -836,8 +861,177 @@
         boolField("display_date"),
         boolField("display_coefficient"),
         boolField("display_class_average"),
+        boolField("display_teacher"),
         MAX_ITEMS_FIELD,
       ],
+      "evaluations"
+    )
+  );
+
+  // ---------------------------------------------------------------------
+  // skolengo-competencies-card ("Compétences")
+  //
+  // Skolengo's `evaluation` resource carries either a numeric mark or a
+  // set of skill/competency levels (see SkolengoEvaluationsCard above) --
+  // this card shows only the latter, grouped like Skolengo's own
+  // "Compétences" view, for setups that want notes and competencies on
+  // separate cards/dashboards.
+  // ---------------------------------------------------------------------
+
+  // Mirrors the 4-level (+ "no selection") mastery scale shown in
+  // Skolengo's own app: worst to best maps to the existing error/warning/
+  // info/success badge colors. Falls back to "neutral" for "Aucune
+  // sélection" and for any label a school customized away from Skolengo's
+  // defaults (see `normalize_mastery_level()` / `apply_skill_level_labels()`
+  // in evaluations.py).
+  const MASTERY_BADGE_CLASSES = {
+    "Maîtrise insuffisante": "error",
+    "Maîtrise fragile": "warning",
+    "Maîtrise satisfaisante": "info",
+    "Très bonne maîtrise": "success",
+  };
+
+  function masteryBadgeClass(level) {
+    return MASTERY_BADGE_CLASSES[level] || "neutral";
+  }
+
+  class SkolengoCompetenciesCard extends HTMLElement {
+    setConfig(config) {
+      if (!config || !config.entity) {
+        throw new Error('"entity" est obligatoire dans la configuration de la carte');
+      }
+      this._config = {
+        title: "Compétences",
+        display_header: true,
+        display_date: true,
+        display_teacher: false,
+        max_items: 15,
+        ...config,
+      };
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      this._render();
+    }
+
+    _competencies() {
+      const stateObj = this._hass && this._hass.states[this._config.entity];
+      const evaluations = (stateObj && stateObj.attributes.evaluations) || [];
+      return evaluations.filter((ev) => Array.isArray(ev.skills) && ev.skills.length);
+    }
+
+    getCardSize() {
+      return 1 + Math.max(1, this._competencies().length);
+    }
+
+    connectedCallback() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this._render();
+    }
+
+    _render() {
+      if (!this.shadowRoot) return;
+      if (!this._hass || !this._config) return;
+      const stateObj = this._hass.states[this._config.entity];
+      if (!stateObj) {
+        this.shadowRoot.innerHTML = cardWrapper(
+          `<div class="skolengo-empty">Entité "${escapeHtml(this._config.entity)}" introuvable.</div>`
+        );
+        return;
+      }
+
+      const attrs = stateObj.attributes || {};
+      const periods = Array.isArray(attrs.periods) ? attrs.periods : [];
+      if (this._selectedPeriodId === undefined) {
+        this._selectedPeriodId = defaultPeriodId(periods);
+      }
+      const byPeriod = attrs.evaluations_by_period || {};
+      const periodData = this._selectedPeriodId ? byPeriod[this._selectedPeriodId] : null;
+      const evaluations = periodData
+        ? Array.isArray(periodData.evaluations)
+          ? periodData.evaluations
+          : []
+        : Array.isArray(attrs.evaluations)
+        ? attrs.evaluations
+        : [];
+      const competencies = evaluations.filter((ev) => Array.isArray(ev.skills) && ev.skills.length);
+
+      let html = "";
+      if (this._config.display_header) {
+        const skillCount = competencies.reduce((total, ev) => total + ev.skills.length, 0);
+        const subtitle = skillCount
+          ? `${skillCount} compétence${skillCount > 1 ? "s" : ""} évaluée${skillCount > 1 ? "s" : ""}`
+          : "Aucune compétence évaluée";
+        html += `<div class="skolengo-header">
+          <span class="skolengo-title">${escapeHtml(this._config.title)}</span>
+          <span class="skolengo-subtitle">${escapeHtml(subtitle)}</span>
+        </div>`;
+      }
+
+      html += renderPeriodSelector(periods, this._selectedPeriodId);
+
+      if (!competencies.length) {
+        html += `<div class="skolengo-empty">Aucune compétence évaluée</div>`;
+      } else {
+        html += '<div class="skolengo-list">';
+        for (const ev of competencies.slice(0, this._config.max_items)) {
+          const color = subjectColor(ev.subject_color);
+          const metaBits = [];
+          if (this._config.display_date && ev.date) {
+            metaBits.push(escapeHtml(formatDateShort(ev.date)));
+          }
+          if (this._config.display_teacher && Array.isArray(ev.teachers) && ev.teachers.length) {
+            metaBits.push(escapeHtml(ev.teachers.join(", ")));
+          }
+
+          const skillsHtml = ev.skills
+            .map(
+              (s) => `<div class="skolengo-competency-row">
+                <span class="skolengo-competency-label">${escapeHtml(s.skill || "Compétence")}</span>
+                ${
+                  s.level
+                    ? `<span class="skolengo-badge ${masteryBadgeClass(s.level)}">${escapeHtml(s.level)}</span>`
+                    : ""
+                }
+              </div>`
+            )
+            .join("");
+
+          html += `<div class="skolengo-item" style="--item-color:${color}">
+            <div class="skolengo-item-main">
+              <div class="skolengo-item-top">
+                <span class="skolengo-subject">${escapeHtml(ev.subject || "Matière")}</span>
+              </div>
+              ${ev.title ? `<div class="skolengo-line">${escapeHtml(ev.title)}</div>` : ""}
+              ${metaBits.length ? `<div class="skolengo-line">${metaBits.join(" · ")}</div>` : ""}
+              <div class="skolengo-competencies">${skillsHtml}</div>
+            </div>
+          </div>`;
+        }
+        html += "</div>";
+      }
+
+      this.shadowRoot.innerHTML = cardWrapper(html);
+      bindPeriodSelector(this.shadowRoot, (periodId) => {
+        this._selectedPeriodId = periodId;
+        this._render();
+      });
+    }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-competencies-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findFirstCompatibleEntity(hass, "evaluations"), title: "Compétences" };
+    }
+  }
+  safeDefine("skolengo-competencies-card", SkolengoCompetenciesCard);
+  safeDefine(
+    "skolengo-competencies-card-editor",
+    createConfigEditor(
+      [TITLE_FIELD, boolField("display_header"), boolField("display_date"), boolField("display_teacher"), MAX_ITEMS_FIELD],
       "evaluations"
     )
   );
@@ -1128,6 +1322,13 @@
       type: "skolengo-evaluations-card",
       name: "Skolengo - Notes",
       description: "Affiche les notes et évaluations de compétences depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-competencies-card",
+      name: "Skolengo - Compétences",
+      description:
+        "Affiche uniquement les évaluations de compétences (niveaux de maîtrise), groupées par matière, depuis un capteur Skolengo.",
       preview: false,
     },
     {
