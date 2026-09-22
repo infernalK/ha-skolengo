@@ -5,7 +5,7 @@ Split out from `sensor.py` so `coordinator.py` can also flatten evaluations
 """
 from __future__ import annotations
 
-from .colors import normalize_color
+from .colors import normalize_color, normalize_mastery_level
 
 
 def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
@@ -43,7 +43,7 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                 ):
                     mark = float(result["mark"])
                 for skill_result in result.get("subSkillsEvaluationResults") or []:
-                    level = skill_result.get("level")
+                    level = normalize_mastery_level(skill_result.get("level"))
                     skill = (skill_result.get("subSkill") or {}).get("shortLabel")
                     if level or skill:
                         skills.append({"skill": skill, "level": level})

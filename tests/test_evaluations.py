@@ -97,6 +97,33 @@ def test_skill_based_evaluation_collects_levels():
     assert item["skills"] == [{"skill": "Rédaction", "level": "Acquis"}]
 
 
+def test_skill_level_enum_code_is_translated_to_french_label():
+    # Regression test: `/evaluation-services` can return the raw mastery
+    # enum code (e.g. "SATISFACTORY_MASTERY") instead of a human label,
+    # which used to leak as-is into the sensor attributes and cards.
+    service = _evaluation_service(
+        evaluations=[
+            {
+                "id": "eval-5",
+                "evaluationResult": {
+                    "mark": None,
+                    "nonEvaluationReason": None,
+                    "subSkillsEvaluationResults": [
+                        {
+                            "level": "SATISFACTORY_MASTERY",
+                            "subSkill": {"shortLabel": "Débat"},
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    [item] = flatten_evaluations([service])
+
+    assert item["skills"] == [{"skill": "Débat", "level": "Maîtrise satisfaisante"}]
+
+
 def test_period_id_is_tagged_by_coordinator_and_propagated():
     service = _evaluation_service(
         evaluations=[{"id": "eval-5", "evaluationResult": {"mark": 9, "nonEvaluationReason": None}}]
