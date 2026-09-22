@@ -173,6 +173,7 @@
     .skolengo-item-main {
       flex: 1;
       min-width: 0;
+      overflow-wrap: anywhere;
     }
     .skolengo-item-top {
       display: flex;
@@ -193,6 +194,8 @@
       color: var(--secondary-text-color);
       font-size: 0.9em;
       margin-top: 2px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .skolengo-badge {
       display: inline-block;
@@ -381,6 +384,7 @@
     display_date: "Afficher la date",
     display_coefficient: "Afficher le coefficient",
     display_class_average: "Afficher la moyenne de classe",
+    display_skills: "Afficher les évaluations de compétences",
     display_comment: "Afficher le commentaire",
   };
 
@@ -721,6 +725,7 @@
         display_coefficient: true,
         display_class_average: true,
         display_teacher: false,
+        display_skills: true,
         max_items: 15,
         ...config,
       };
@@ -731,10 +736,19 @@
       this._render();
     }
 
+    // A skill-only evaluation (no numeric mark) is filtered out when
+    // `display_skills` is off -- e.g. this card is used alongside
+    // `skolengo-competencies-card` and the user doesn't want the same
+    // competency evaluation showing up twice.
+    _filteredEvaluations(evaluations) {
+      if (this._config.display_skills) return evaluations;
+      return evaluations.filter((ev) => ev.mark !== null && ev.mark !== undefined);
+    }
+
     getCardSize() {
       const stateObj = this._hass && this._hass.states[this._config.entity];
       const evaluations = (stateObj && stateObj.attributes.evaluations) || [];
-      return 1 + Math.max(1, evaluations.length);
+      return 1 + Math.max(1, this._filteredEvaluations(evaluations).length);
     }
 
     connectedCallback() {
@@ -760,13 +774,15 @@
       }
       const byPeriod = attrs.evaluations_by_period || {};
       const periodData = this._selectedPeriodId ? byPeriod[this._selectedPeriodId] : null;
-      const evaluations = periodData
-        ? Array.isArray(periodData.evaluations)
-          ? periodData.evaluations
+      const evaluations = this._filteredEvaluations(
+        periodData
+          ? Array.isArray(periodData.evaluations)
+            ? periodData.evaluations
+            : []
+          : Array.isArray(attrs.evaluations)
+          ? attrs.evaluations
           : []
-        : Array.isArray(attrs.evaluations)
-        ? attrs.evaluations
-        : [];
+      );
       const avg = periodData ? periodData.average : attrs.average;
 
       let html = "";
@@ -862,6 +878,7 @@
         boolField("display_coefficient"),
         boolField("display_class_average"),
         boolField("display_teacher"),
+        boolField("display_skills"),
         MAX_ITEMS_FIELD,
       ],
       "evaluations"

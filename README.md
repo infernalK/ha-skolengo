@@ -117,11 +117,22 @@ display_class_average: true
 
 Uniquement les évaluations de compétences (niveaux de maîtrise), groupées par matière comme la vue "Compétences" de Skolengo, à associer au même capteur `..._notes` que `skolengo-evaluations-card`.
 
+<img src="docs/img/skolengo-competencies-card.png" alt="Rendu de la carte skolengo-competencies-card" width="380">
+
 ```yaml
 type: custom:skolengo-competencies-card
 entity: sensor.skolengo_..._notes
 title: Compétences
 display_teacher: true
+```
+
+Pour éviter d'avoir les mêmes évaluations de compétences affichées deux fois (dans `skolengo-evaluations-card` *et* dans cette carte), désactivez-les sur la carte "Notes" avec `display_skills: false` :
+
+```yaml
+type: custom:skolengo-evaluations-card
+entity: sensor.skolengo_..._notes
+title: Notes
+display_skills: false
 ```
 
 ### `skolengo-averages-card`
