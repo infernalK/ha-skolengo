@@ -15,6 +15,23 @@ from .coordinator import SkolengoDataUpdateCoordinator
 from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework
 
+# Cap on the "assignments"/"done_assignments" attribute lists exposed by
+# `SkolengoHomeworkDueSensor`. With the agenda now covering the whole school
+# year, the raw homework list can hold hundreds of entries; recorder rejects
+# (and drops) any entity's attributes past 16 KiB, so both the item count
+# and each item's `html` field (the longest one, potentially a full
+# paragraph) are bounded to stay well under that.
+MAX_HOMEWORK_ATTRS = 15
+MAX_HOMEWORK_HTML_LENGTH = 500
+
+
+def _flatten_homework_for_attrs(hw: dict) -> dict:
+    flat = flatten_homework(hw)
+    html = flat.get("html")
+    if html and len(html) > MAX_HOMEWORK_HTML_LENGTH:
+        flat["html"] = html[:MAX_HOMEWORK_HTML_LENGTH] + "…"
+    return flat
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -334,9 +351,15 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
         homework_sorted = sorted(
             self._homework, key=lambda hw: hw.get("dueDate") or hw.get("dueDateTime") or ""
         )
+        not_done = [hw for hw in homework_sorted if not hw.get("done")]
+        # Most recently due first for the "done" list -- with the agenda now
+        # spanning the whole school year, sorting it ascending like
+        # `not_done` would surface September's completed homework instead of
+        # anything recent.
+        done = list(reversed([hw for hw in homework_sorted if hw.get("done")]))
         return {
-            "assignments": [flatten_homework(hw) for hw in homework_sorted if not hw.get("done")][:30],
-            "done_assignments": [flatten_homework(hw) for hw in homework_sorted if hw.get("done")][:30],
+            "assignments": [_flatten_homework_for_attrs(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
+            "done_assignments": [_flatten_homework_for_attrs(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
         }
 
 
