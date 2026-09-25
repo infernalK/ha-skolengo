@@ -23,7 +23,6 @@ from .const import (
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
     CONF_USER_ID,
-    DEFAULT_AGENDA_DAYS_FUTURE,
     DEFAULT_ALARM_OFFSET,
     DOMAIN,
     EVENT_SKOLENGO,
@@ -33,6 +32,8 @@ from .const import (
     EVENT_TYPE_NEW_GRADE,
     EVENT_TYPE_NEW_HOMEWORK,
     HOMEWORK_DAYS_FUTURE,
+    SCHOOL_YEAR_END_DAY,
+    SCHOOL_YEAR_END_MONTH,
 )
 from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
@@ -146,12 +147,14 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
     async def _async_update_data(self) -> SkolengoData:
         client = await self._async_ensure_client()
 
-        agenda_days_future = self.entry.options.get(
-            CONF_AGENDA_DAYS_FUTURE, DEFAULT_AGENDA_DAYS_FUTURE
-        )
         today = dt_util.now().date()
+        agenda_days_future = self.entry.options.get(CONF_AGENDA_DAYS_FUTURE)
+        agenda_end = (
+            today + timedelta(days=agenda_days_future)
+            if agenda_days_future
+            else _end_of_school_year(today)
+        )
         agenda_start = today - timedelta(days=AGENDA_DAYS_PAST)
-        agenda_end = today + timedelta(days=agenda_days_future)
         homework_end = today + timedelta(days=HOMEWORK_DAYS_FUTURE)
 
         def _fetch() -> SkolengoData:
@@ -405,6 +408,19 @@ def _is_lesson_addition_genuine(lesson: dict, previous_agenda_end: date | None) 
         return False
     lesson_date = _lesson_date(lesson)
     return lesson_date is not None and lesson_date <= previous_agenda_end
+
+
+def _end_of_school_year(today: date) -> date:
+    """The next occurrence of `SCHOOL_YEAR_END_MONTH`/`_DAY` on or after `today`.
+
+    Used as the default upper bound of the agenda window, so the timetable
+    calendar naturally covers the rest of the current school year -- rolling
+    over to next year's end date once the current one has passed.
+    """
+    end_this_year = date(today.year, SCHOOL_YEAR_END_MONTH, SCHOOL_YEAR_END_DAY)
+    if today <= end_this_year:
+        return end_this_year
+    return date(today.year + 1, SCHOOL_YEAR_END_MONTH, SCHOOL_YEAR_END_DAY)
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:

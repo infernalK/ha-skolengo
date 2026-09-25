@@ -27,7 +27,6 @@ from .const import (
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
     CONF_USER_ID,
-    DEFAULT_AGENDA_DAYS_FUTURE,
     DEFAULT_ALARM_OFFSET,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -314,7 +313,13 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            data = dict(user_input)
+            if not data.get(CONF_AGENDA_DAYS_FUTURE):
+                # Blank/0 means "automatic": drop the key so the coordinator
+                # falls back to fetching through the end of the school year
+                # instead of pinning a fixed day count.
+                data.pop(CONF_AGENDA_DAYS_FUTURE, None)
+            return self.async_create_entry(title="", data=data)
 
         current_scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
@@ -322,8 +327,11 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
         current_alarm_offset = self.config_entry.options.get(
             CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET
         )
-        current_agenda_days_future = self.config_entry.options.get(
-            CONF_AGENDA_DAYS_FUTURE, DEFAULT_AGENDA_DAYS_FUTURE
+        current_agenda_days_future = self.config_entry.options.get(CONF_AGENDA_DAYS_FUTURE)
+        agenda_days_future_key = (
+            vol.Optional(CONF_AGENDA_DAYS_FUTURE, default=current_agenda_days_future)
+            if current_agenda_days_future is not None
+            else vol.Optional(CONF_AGENDA_DAYS_FUTURE)
         )
         return self.async_show_form(
             step_id="init",
@@ -335,11 +343,13 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_ALARM_OFFSET, default=current_alarm_offset
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ALARM_OFFSET)),
-                    vol.Required(
-                        CONF_AGENDA_DAYS_FUTURE, default=current_agenda_days_future
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_AGENDA_DAYS_FUTURE, max=MAX_AGENDA_DAYS_FUTURE),
+                    agenda_days_future_key: vol.Any(
+                        None,
+                        "",
+                        vol.All(
+                            vol.Coerce(int),
+                            vol.Range(min=MIN_AGENDA_DAYS_FUTURE, max=MAX_AGENDA_DAYS_FUTURE),
+                        ),
                     ),
                 }
             ),

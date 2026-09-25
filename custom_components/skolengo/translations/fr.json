@@ -57,7 +57,7 @@
         "data": {
           "scan_interval": "Intervalle de rafraîchissement (minutes)",
           "alarm_offset": "Temps de préparation avant le 1er cours (minutes)",
-          "agenda_days_future": "Portée de l'emploi du temps (jours, jusqu'à 366 pour l'année scolaire entière)"
+          "agenda_days_future": "Forcer la portée de l'emploi du temps (jours ; laisser vide pour couvrir automatiquement jusqu'à la fin de l'année scolaire)"
         }
       }
     }

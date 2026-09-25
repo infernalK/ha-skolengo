@@ -35,15 +35,24 @@ CONF_ALARM_OFFSET = "alarm_offset"
 DEFAULT_ALARM_OFFSET = 60  # minutes
 MIN_ALARM_OFFSET = 0
 
-# How far ahead the timetable calendar looks, in days. Kept short by
-# default to limit the number of /agendas requests issued on every poll
-# (see `_get_agenda_paginated`'s 15-day chunking), but raising it lets the
-# calendar show the whole school year ahead -- handy for booking
-# appointments against upcoming free slots.
+# How far ahead the timetable calendar looks. By default (option unset)
+# the agenda is fetched all the way through the end of the current school
+# year (see `_end_of_school_year()` in coordinator.py) -- handy for
+# booking appointments against upcoming free slots without the window
+# running out mid-year. Setting the option pins it to a fixed number of
+# days from today instead, which trades that full-year visibility for
+# fewer /agendas requests per poll (see `_get_agenda_paginated`'s 15-day
+# chunking).
 CONF_AGENDA_DAYS_FUTURE = "agenda_days_future"
-DEFAULT_AGENDA_DAYS_FUTURE = 15
 MIN_AGENDA_DAYS_FUTURE = 1
 MAX_AGENDA_DAYS_FUTURE = 366
+
+# The school year is considered to run through August 31st; lessons stop
+# being published well before that (early July), so requesting up to this
+# date rather than a shorter one just means a few extra empty-result
+# request chunks near the end, not wrong data.
+SCHOOL_YEAR_END_MONTH = 8
+SCHOOL_YEAR_END_DAY = 31
 
 DEFAULT_UPDATE_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 
