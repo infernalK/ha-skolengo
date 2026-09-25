@@ -13,8 +13,8 @@ from homeassistant.util import dt as dt_util
 
 from .api import SkolengoApiError, SkolengoAuthError, SkolengoClient, SkolengoTokens
 from .const import (
-    AGENDA_DAYS_FUTURE,
     AGENDA_DAYS_PAST,
+    CONF_AGENDA_DAYS_FUTURE,
     CONF_ALARM_OFFSET,
     CONF_REFRESH_TOKEN,
     CONF_SCHOOL_EMS_CODE,
@@ -23,6 +23,7 @@ from .const import (
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
     CONF_USER_ID,
+    DEFAULT_AGENDA_DAYS_FUTURE,
     DEFAULT_ALARM_OFFSET,
     DOMAIN,
     EVENT_SKOLENGO,
@@ -145,9 +146,12 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
     async def _async_update_data(self) -> SkolengoData:
         client = await self._async_ensure_client()
 
+        agenda_days_future = self.entry.options.get(
+            CONF_AGENDA_DAYS_FUTURE, DEFAULT_AGENDA_DAYS_FUTURE
+        )
         today = dt_util.now().date()
         agenda_start = today - timedelta(days=AGENDA_DAYS_PAST)
-        agenda_end = today + timedelta(days=AGENDA_DAYS_FUTURE)
+        agenda_end = today + timedelta(days=agenda_days_future)
         homework_end = today + timedelta(days=HOMEWORK_DAYS_FUTURE)
 
         def _fetch() -> SkolengoData:
@@ -390,7 +394,7 @@ def _lesson_date(lesson: dict) -> date | None:
 def _is_lesson_addition_genuine(lesson: dict, previous_agenda_end: date | None) -> bool:
     """Tell a real timetable addition apart from the agenda window's edge.
 
-    `AGENDA_DAYS_FUTURE` rolls forward by a day on every update, so a
+    The agenda's future window rolls forward by a day on every update, so a
     lesson dated beyond the *previous* window's end is merely coming into
     view for the first time -- not a real addition. Only a lesson whose
     date already sat inside that previous window, yet wasn't returned by

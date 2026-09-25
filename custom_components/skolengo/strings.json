@@ -56,7 +56,8 @@
         "title": "Skolengo options",
         "data": {
           "scan_interval": "Refresh interval (minutes)",
-          "alarm_offset": "Prep time before the first lesson (minutes)"
+          "alarm_offset": "Prep time before the first lesson (minutes)",
+          "agenda_days_future": "Timetable lookahead (days, up to 366 for the whole school year)"
         }
       }
     }

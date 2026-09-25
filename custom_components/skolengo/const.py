@@ -35,12 +35,21 @@ CONF_ALARM_OFFSET = "alarm_offset"
 DEFAULT_ALARM_OFFSET = 60  # minutes
 MIN_ALARM_OFFSET = 0
 
+# How far ahead the timetable calendar looks, in days. Kept short by
+# default to limit the number of /agendas requests issued on every poll
+# (see `_get_agenda_paginated`'s 15-day chunking), but raising it lets the
+# calendar show the whole school year ahead -- handy for booking
+# appointments against upcoming free slots.
+CONF_AGENDA_DAYS_FUTURE = "agenda_days_future"
+DEFAULT_AGENDA_DAYS_FUTURE = 15
+MIN_AGENDA_DAYS_FUTURE = 1
+MAX_AGENDA_DAYS_FUTURE = 366
+
 DEFAULT_UPDATE_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 
 # Window (in days) used to fetch the timetable / homework / agenda around
 # "today", mirroring hass-pronote's approach.
 AGENDA_DAYS_PAST = 2
-AGENDA_DAYS_FUTURE = 15
 HOMEWORK_DAYS_FUTURE = 60
 
 # When the /homework-assignments endpoint 500s (Skolengo server bug) and we

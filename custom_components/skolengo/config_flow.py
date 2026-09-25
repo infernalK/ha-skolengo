@@ -16,6 +16,7 @@ from .api import (
     SkolengoSchool,
 )
 from .const import (
+    CONF_AGENDA_DAYS_FUTURE,
     CONF_ALARM_OFFSET,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
@@ -26,9 +27,12 @@ from .const import (
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
     CONF_USER_ID,
+    DEFAULT_AGENDA_DAYS_FUTURE,
     DEFAULT_ALARM_OFFSET,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_AGENDA_DAYS_FUTURE,
+    MIN_AGENDA_DAYS_FUTURE,
     MIN_ALARM_OFFSET,
     MIN_SCAN_INTERVAL,
 )
@@ -318,6 +322,9 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
         current_alarm_offset = self.config_entry.options.get(
             CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET
         )
+        current_agenda_days_future = self.config_entry.options.get(
+            CONF_AGENDA_DAYS_FUTURE, DEFAULT_AGENDA_DAYS_FUTURE
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -328,6 +335,12 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_ALARM_OFFSET, default=current_alarm_offset
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ALARM_OFFSET)),
+                    vol.Required(
+                        CONF_AGENDA_DAYS_FUTURE, default=current_agenda_days_future
+                    ): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=MIN_AGENDA_DAYS_FUTURE, max=MAX_AGENDA_DAYS_FUTURE),
+                    ),
                 }
             ),
         )

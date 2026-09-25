@@ -56,7 +56,8 @@
         "title": "Options Skolengo",
         "data": {
           "scan_interval": "Intervalle de rafraîchissement (minutes)",
-          "alarm_offset": "Temps de préparation avant le 1er cours (minutes)"
+          "alarm_offset": "Temps de préparation avant le 1er cours (minutes)",
+          "agenda_days_future": "Portée de l'emploi du temps (jours, jusqu'à 366 pour l'année scolaire entière)"
         }
       }
     }
