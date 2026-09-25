@@ -16,21 +16,10 @@ from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework
 
 # Cap on the "assignments"/"done_assignments" attribute lists exposed by
-# `SkolengoHomeworkDueSensor`. With the agenda now covering the whole school
-# year, the raw homework list can hold hundreds of entries; recorder rejects
-# (and drops) any entity's attributes past 16 KiB, so both the item count
-# and each item's `html` field (the longest one, potentially a full
-# paragraph) are bounded to stay well under that.
-MAX_HOMEWORK_ATTRS = 15
-MAX_HOMEWORK_HTML_LENGTH = 500
-
-
-def _flatten_homework_for_attrs(hw: dict) -> dict:
-    flat = flatten_homework(hw)
-    html = flat.get("html")
-    if html and len(html) > MAX_HOMEWORK_HTML_LENGTH:
-        flat["html"] = html[:MAX_HOMEWORK_HTML_LENGTH] + "…"
-    return flat
+# `SkolengoHomeworkDueSensor` -- just to bound the live state's size to
+# something sane, since `_unrecorded_attributes` on that sensor (below)
+# already keeps them out of recorder history regardless of size.
+MAX_HOMEWORK_ATTRS = 30
 
 
 async def async_setup_entry(
@@ -338,6 +327,14 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "devoirs"
     _attr_translation_key = "homework_due"
+    # `assignments`/`done_assignments` hold full homework payloads (each
+    # with a potentially long `html` field) for a whole school year --
+    # routinely over recorder's 16 KiB per-attribute limit, which would
+    # otherwise just silently drop them from history every update and log
+    # a warning. They're a live snapshot for the bundled card, not
+    # meaningful history to chart, so keep them out of recorder entirely
+    # instead of shrinking the data the card actually displays.
+    _unrecorded_attributes = frozenset({"assignments", "done_assignments"})
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "homework_due", "Devoirs à faire")
@@ -358,8 +355,8 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
         # anything recent.
         done = list(reversed([hw for hw in homework_sorted if hw.get("done")]))
         return {
-            "assignments": [_flatten_homework_for_attrs(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
-            "done_assignments": [_flatten_homework_for_attrs(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
+            "assignments": [flatten_homework(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
+            "done_assignments": [flatten_homework(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
         }
 
 
