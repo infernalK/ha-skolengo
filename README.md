@@ -56,7 +56,7 @@ Le mot de passe n'est utilisé qu'au moment de la connexion initiale : seul un j
 
 ### Options
 
-Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'intervalle de rafraîchissement des données (30 minutes par défaut). Par défaut, le calendrier de l'emploi du temps couvre automatiquement toute l'année scolaire en cours (jusqu'au 31 août) — pratique pour prendre des rendez-vous sur les créneaux libres à venir, sans limite figée dans le temps. Un champ optionnel permet de forcer une portée plus courte, en nombre de jours à partir d'aujourd'hui, si vous préférez réduire le nombre de requêtes envoyées à l'API Skolengo à chaque rafraîchissement.
+Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'intervalle de rafraîchissement des données (30 minutes par défaut). Par défaut, les calendriers "Emploi du temps" et "Devoirs" couvrent automatiquement toute l'année scolaire en cours (du 1er septembre au 31 août) — pratique pour retrouver les cours depuis la rentrée ou prendre des rendez-vous sur les créneaux libres à venir, sans limite figée dans le temps. Un champ optionnel permet de forcer une portée future plus courte, en nombre de jours à partir d'aujourd'hui, si vous préférez réduire le nombre de requêtes envoyées à l'API Skolengo à chaque rafraîchissement.
 
 ## Limitations connues
 

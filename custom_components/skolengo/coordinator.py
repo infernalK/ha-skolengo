@@ -13,7 +13,6 @@ from homeassistant.util import dt as dt_util
 
 from .api import SkolengoApiError, SkolengoAuthError, SkolengoClient, SkolengoTokens
 from .const import (
-    AGENDA_DAYS_PAST,
     CONF_AGENDA_DAYS_FUTURE,
     CONF_ALARM_OFFSET,
     CONF_REFRESH_TOKEN,
@@ -31,9 +30,10 @@ from .const import (
     EVENT_TYPE_LESSON_MODIFIED,
     EVENT_TYPE_NEW_GRADE,
     EVENT_TYPE_NEW_HOMEWORK,
-    HOMEWORK_DAYS_FUTURE,
     SCHOOL_YEAR_END_DAY,
     SCHOOL_YEAR_END_MONTH,
+    SCHOOL_YEAR_START_DAY,
+    SCHOOL_YEAR_START_MONTH,
 )
 from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
@@ -154,8 +154,12 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             if agenda_days_future
             else _end_of_school_year(today)
         )
-        agenda_start = today - timedelta(days=AGENDA_DAYS_PAST)
-        homework_end = today + timedelta(days=HOMEWORK_DAYS_FUTURE)
+        # Same lower bound for both the timetable and the homework due-date
+        # window, so neither misses anything since the school year began.
+        school_year_start = _start_of_school_year(today)
+        agenda_start = school_year_start
+        homework_start = school_year_start
+        homework_end = agenda_end
 
         def _fetch() -> SkolengoData:
             lessons: list[dict] = []
@@ -168,7 +172,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
             homework: list[dict] = []
             try:
-                homework = client.get_homework(self.student_id, today, homework_end)
+                homework = client.get_homework(self.student_id, homework_start, homework_end)
             except SkolengoApiError as err:
                 _LOGGER.warning("Unable to fetch homework: %s", err)
 
@@ -413,14 +417,28 @@ def _is_lesson_addition_genuine(lesson: dict, previous_agenda_end: date | None) 
 def _end_of_school_year(today: date) -> date:
     """The next occurrence of `SCHOOL_YEAR_END_MONTH`/`_DAY` on or after `today`.
 
-    Used as the default upper bound of the agenda window, so the timetable
-    calendar naturally covers the rest of the current school year -- rolling
-    over to next year's end date once the current one has passed.
+    Used as the default upper bound of the agenda/homework windows, so the
+    timetable and homework calendars naturally cover the rest of the current
+    school year -- rolling over to next year's end date once the current one
+    has passed.
     """
     end_this_year = date(today.year, SCHOOL_YEAR_END_MONTH, SCHOOL_YEAR_END_DAY)
     if today <= end_this_year:
         return end_this_year
     return date(today.year + 1, SCHOOL_YEAR_END_MONTH, SCHOOL_YEAR_END_DAY)
+
+
+def _start_of_school_year(today: date) -> date:
+    """The most recent occurrence of `SCHOOL_YEAR_START_MONTH`/`_DAY` on or before `today`.
+
+    Used as the lower bound of the agenda/homework windows, so the
+    timetable and homework calendars cover everything since the school
+    year began instead of just the last couple of days.
+    """
+    start_this_year = date(today.year, SCHOOL_YEAR_START_MONTH, SCHOOL_YEAR_START_DAY)
+    if today >= start_this_year:
+        return start_this_year
+    return date(today.year - 1, SCHOOL_YEAR_START_MONTH, SCHOOL_YEAR_START_DAY)
 
 
 def _find_student_info(user_info: dict, student_id: str) -> dict:
