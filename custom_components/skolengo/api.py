@@ -831,6 +831,22 @@ class SkolengoClient:
         return days
 
     def get_homework(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        # /homework-assignments rejects any request spanning more than 100
+        # days ("the maximum duration for the search period is 100 days"),
+        # unlike /agendas which silently truncates instead -- so unlike
+        # `_get_agenda_paginated`, a range wider than that must be split
+        # into chunks up front rather than relying on the API to just cap
+        # it. 90 days per chunk keeps a safety margin under that limit.
+        chunk_days = 90
+        homework: list[dict[str, Any]] = []
+        chunk_start = start
+        while chunk_start <= end:
+            chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), end)
+            homework.extend(self._get_homework_chunk(student_id, chunk_start, chunk_end))
+            chunk_start = chunk_end + timedelta(days=1)
+        return homework
+
+    def _get_homework_chunk(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
         params = {
             "filter[student.id]": student_id,
             "filter[dueDate][GE]": start.isoformat(),
