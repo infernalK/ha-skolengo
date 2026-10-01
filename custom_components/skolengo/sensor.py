@@ -10,10 +10,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .colors import normalize_color
-from .const import CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
+from .const import CONF_SCHOOL_ID, CONF_SCHOOL_NAME, CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
 from .coordinator import SkolengoDataUpdateCoordinator
 from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework
+from .news import claim_news_sensor
 from .school_life import flatten_absence_file as _serialize_absence_file
 
 # Cap on the "assignments"/"done_assignments" attribute lists exposed by
@@ -27,6 +28,8 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: SkolengoDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if claim_news_sensor(hass, entry.data[CONF_SCHOOL_ID], entry.entry_id):
+        async_add_entities([SkolengoNewsSensor(coordinator, entry)])
     async_add_entities(
         [
             SkolengoStudentClassSensor(coordinator, entry),
@@ -41,7 +44,6 @@ async def async_setup_entry(
             SkolengoExemptionsSensor(coordinator, entry),
             SkolengoObservationsSensor(coordinator, entry),
             SkolengoPunishmentsSensor(coordinator, entry),
-            SkolengoNewsSensor(coordinator, entry),
             SkolengoEvaluationsSensor(coordinator, entry),
             SkolengoAverageGradeSensor(coordinator, entry),
         ]
@@ -505,6 +507,16 @@ class SkolengoNewsSensor(SkolengoSensorBase):
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "news", "Actualités")
+        # School-wide data: one sensor per school, on its own device, rather
+        # than one copy under each student.
+        school_id = entry.data[CONF_SCHOOL_ID]
+        self._attr_unique_id = f"school_{school_id}_news"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"school_{school_id}")},
+            name=f"Skolengo - {entry.data.get(CONF_SCHOOL_NAME, 'Établissement')}",
+            manufacturer=MANUFACTURER,
+            entry_type="service",
+        )
 
     @property
     def native_value(self) -> str | None:

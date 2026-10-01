@@ -184,7 +184,7 @@ entity: sensor.skolengo_..._observations
 
 ### `skolengo-news-card`
 
-Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, pièces jointes). Les actualités sont celles de l'établissement : les capteurs de deux enfants du même collège affichent les mêmes articles.
+Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, pièces jointes). Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
 
 <img src="docs/img/skolengo-news-card.png" alt="Rendu de la carte skolengo-news-card" width="380">
 

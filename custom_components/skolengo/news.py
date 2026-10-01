@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from bs4 import BeautifulSoup
 
+from .const import NEWS_OWNER_KEY
+
 
 def html_to_text(html: str | None) -> str:
     """Plain text of a news article's HTML body (paragraphs separated by
@@ -44,3 +46,24 @@ def flatten_school_news(items: list[dict] | None) -> list[dict]:
     news = [n for n in news if n["title"] or n["content"]]
     news.sort(key=lambda n: n["date"] or "", reverse=True)
     return news
+
+
+def claim_news_sensor(hass, school_id: str, entry_id: str) -> bool:
+    """Whether `entry_id` should create its school's news sensor.
+
+    News belongs to the school, so siblings in the same school share one
+    sensor (on a "school" device) instead of each getting a copy. The
+    first config entry to ask owns it.
+    """
+    owners: dict[str, str] = hass.data.setdefault(NEWS_OWNER_KEY, {})
+    return owners.setdefault(school_id, entry_id) == entry_id
+
+
+def release_news_sensor(hass, school_id: str, entry_id: str) -> bool:
+    """Drop `entry_id`'s ownership (on unload). Returns True if it owned it,
+    meaning a sibling entry must be reloaded to take the sensor over."""
+    owners: dict[str, str] = hass.data.get(NEWS_OWNER_KEY, {})
+    if owners.get(school_id) == entry_id:
+        del owners[school_id]
+        return True
+    return False
