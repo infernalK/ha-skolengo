@@ -1203,6 +1203,31 @@
     return `<span class="skolengo-badge neutral">${escapeHtml(status)}</span>`;
   }
 
+  // Attachments of a news article: one line per file, as a link when the
+  // API gave an http(s) URL (it points to the school's ENT and normally needs
+  // an ENT login). Only http(s) URLs are linked, whatever the API returns.
+  function formatFileSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "";
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
+  }
+
+  function renderAttachments(attachments) {
+    if (!Array.isArray(attachments)) return "";
+    return attachments
+      .filter((a) => a && a.name)
+      .map((a) => {
+        const size = formatFileSize(a.size);
+        const name = escapeHtml(a.name);
+        const link = /^https?:\/\//i.test(a.url || "")
+          ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">${name}</a>`
+          : name;
+        const sizeLabel = size ? ` <span class="skolengo-subtitle">(${size})</span>` : "";
+        return `<div class="skolengo-line">📎 ${link}${sizeLabel}</div>`;
+      })
+      .join("");
+  }
+
   function createVieScolaireCard(listKeys, editorTag) {
   return class extends HTMLElement {
     setConfig(config) {
@@ -1308,13 +1333,7 @@
               ${item.title ? `<div class="skolengo-line">${escapeHtml(period)}</div>` : ""}
               ${item.category ? `<div class="skolengo-line">${escapeHtml(item.category)}</div>` : ""}
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
-              ${
-                Array.isArray(item.attachments) && item.attachments.length
-                  ? `<div class="skolengo-line">📎 ${escapeHtml(
-                      item.attachments.map((a) => a.name).filter(Boolean).join(", ")
-                    )}</div>`
-                  : ""
-              }
+              ${renderAttachments(item.attachments)}
               ${
                 item.issuer || item.author
                   ? `<div class="skolengo-line">${escapeHtml(item.issuer || item.author)}</div>`
