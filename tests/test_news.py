@@ -15,22 +15,36 @@ RAW = [
         "linkedInfoUrl": None,
         "linkedWebSiteUrl": "https://example.org/vente",
         "author": {"person": {"title": "Mme", "firstName": "Anne", "lastName": "Lemaitre"}},
-        "attachments": [{"name": "affiche.pdf"}],
+        "attachments": [{"name": "affiche.pdf", "mimeType": "application/pdf", "size": 1234, "url": "https://ent/f/1"}],
+        "illustration": {"name": "affiche.png", "mimeType": "image/png", "size": 99, "url": "https://ent/f/2"},
     },
     {"id": "n0", "publicationDateTime": "2026-09-10T15:14:06Z", "title": "Photo", "content": "<html></html>"},
     {"id": "empty", "publicationDateTime": "2026-09-11T00:00:00Z", "title": "", "content": "<html><body></body></html>"},
+    {
+        "id": "image-only",
+        "publicationDateTime": "2026-10-01T14:07:27Z",
+        "title": "",
+        "content": "<html><body></body></html>",
+        "illustration": {"name": "poster.jpg", "mimeType": "image/jpeg", "url": "https://ent/f/3"},
+    },
 ]
 
 
 def test_flatten_orders_newest_first_and_cleans_content():
     news = flatten_school_news(RAW)
 
-    assert [n["id"] for n in news] == ["n1", "n0"]  # empty article dropped
-    first = news[0]
+    # the empty article is dropped, an article with only a picture is kept
+    assert [n["id"] for n in news] == ["image-only", "n1", "n0"]
+    assert news[0]["image"]["name"] == "poster.jpg"
+    first = news[1]
     assert first["content"] == "Les 5èmes participent.\nMerci pour votre soutien"
     assert first["author"] == "Mme Anne Lemaitre"
     assert first["url"] == "https://example.org/vente"
-    assert first["attachments"] == ["affiche.pdf"]
+    assert first["attachments"] == [
+        {"name": "affiche.pdf", "mime_type": "application/pdf", "size": 1234, "url": "https://ent/f/1"}
+    ]
+    assert first["image"]["mime_type"] == "image/png"
+    assert news[2]["attachments"] == [] and news[2]["image"] is None
 
 
 def test_html_to_text_handles_empty():

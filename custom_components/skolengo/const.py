@@ -89,6 +89,10 @@ EVENT_TYPE_NEW_OBSERVATION = "new_observation"
 EVENT_TYPE_NEW_PUNISHMENT = "new_punishment"
 EVENT_TYPE_NEW_NEWS = "new_news"
 
+# Attachments are fetched per article; only the most recent ones are looked up
+# (the news sensor only exposes this many anyway).
+NEWS_ATTACHMENT_FETCH_LIMIT = 10
+
 # hass.data key holding, per school, the news ids already reported (shared by
 # all config entries of that school so siblings don't fire duplicate events).
 NEWS_SEEN_KEY = "skolengo_news_seen"

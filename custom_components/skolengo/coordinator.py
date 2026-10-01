@@ -36,6 +36,7 @@ from .const import (
     EVENT_TYPE_NEW_NEWS,
     EVENT_TYPE_NEW_OBSERVATION,
     EVENT_TYPE_NEW_PUNISHMENT,
+    NEWS_ATTACHMENT_FETCH_LIMIT,
     NEWS_SEEN_KEY,
     SCHOOL_YEAR_END_DAY,
     SCHOOL_YEAR_END_MONTH,
@@ -103,6 +104,10 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # item that briefly drops out of a partially failing response is
         # never reported as new again when it comes back.
         self._known_school_life_ids: dict[str, set[str] | None] = {}
+        # News attachments, by article id. They can only be fetched one
+        # article at a time and rarely change, so each article is fetched
+        # once (not at every refresh).
+        self._news_attachments: dict[str, list[dict]] = {}
         # Lesson snapshots (subset of fields) seen on the previous update,
         # keyed by lesson id, used to detect cancellations, reschedules and
         # additions, firing `lesson_canceled`/`lesson_modified`/
@@ -213,7 +218,17 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
             news: list[dict] = []
             try:
-                news = flatten_school_news(client.get_school_news())
+                raw_news = client.get_school_news()
+                for raw in raw_news[:NEWS_ATTACHMENT_FETCH_LIMIT]:
+                    news_id = raw.get("id")
+                    if news_id not in self._news_attachments:
+                        try:
+                            self._news_attachments[news_id] = client.get_school_news_item_attachments(news_id)
+                        except SkolengoApiError as err:
+                            _LOGGER.debug("Unable to fetch attachments of news %s: %s", news_id, err)
+                            continue
+                    raw["attachments"] = self._news_attachments[news_id]
+                news = flatten_school_news(raw_news)
             except SkolengoApiError as err:
                 _LOGGER.debug("Unable to fetch school news (non-fatal): %s", err)
 
