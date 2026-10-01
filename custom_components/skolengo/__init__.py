@@ -6,7 +6,7 @@ import os
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
@@ -71,73 +71,9 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     hass.data[_FRONTEND_REGISTERED_KEY] = True
 
 
-# Debug service: Skolengo's "vie scolaire" observations/punishments are not
-# covered by any documented endpoint, so this tries candidate paths and
-# reports the raw HTTP status/body of each (404 = does not exist).
-PROBE_CANDIDATES = [
-    "/sko-app-configs/current",
-    "/school-life",
-    "/school-life-events",
-    "/school-life-files",
-    "/school-life-summary",
-    "/school-life-reports",
-    "/observations",
-    "/observation-files",
-    "/punishments",
-    "/punishment-files",
-    "/sanctions",
-    "/sanction-files",
-    "/incidents",
-    "/incident-files",
-    "/behaviors",
-    "/behaviours",
-    "/disciplinary-files",
-    "/disciplinary-measures",
-    "/student-observations",
-    "/student-punishments",
-    "/lateness-files",
-    "/absence-files-summary",
-    "/absence-counters",
-]
-SERVICE_PROBE = "probe_endpoints"
-
-
-async def _async_register_services(hass: HomeAssistant) -> None:
-    if hass.services.has_service(DOMAIN, SERVICE_PROBE):
-        return
-
-    async def _probe(call: ServiceCall) -> dict:
-        paths = call.data.get("paths") or PROBE_CANDIDATES
-        entry_id = call.data.get("entry_id")
-        coordinators = hass.data.get(DOMAIN, {})
-        coordinator = coordinators.get(entry_id) if entry_id else next(iter(coordinators.values()), None)
-        if coordinator is None:
-            return {"error": "no Skolengo entry loaded"}
-        results = []
-        for path in paths:
-            # A path carrying its own query string is sent as-is; "{student}"
-            # in it is replaced by the student id.
-            if "?" in path:
-                path = path.replace("{student}", coordinator.student_id)
-                params = None
-            else:
-                params = {"filter[student.id]": coordinator.student_id}
-            result = await hass.async_add_executor_job(coordinator.client.probe, path, params)
-            if params and result.get("status") in (400, 422):
-                result = await hass.async_add_executor_job(coordinator.client.probe, path, None)
-            _LOGGER.warning("Skolengo probe %s -> %s %s", path, result.get("status"), (result.get("body") or result.get("error") or "")[:500])
-            results.append(result)
-        return {"results": results}
-
-    hass.services.async_register(
-        DOMAIN, SERVICE_PROBE, _probe, supports_response=SupportsResponse.ONLY
-    )
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Skolengo from a config entry."""
     await _async_register_frontend(hass)
-    await _async_register_services(hass)
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = SkolengoDataUpdateCoordinator(
