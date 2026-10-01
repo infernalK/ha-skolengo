@@ -92,3 +92,7 @@ EVENT_TYPE_NEW_NEWS = "new_news"
 # hass.data key holding, per school, the news ids already reported (shared by
 # all config entries of that school so siblings don't fire duplicate events).
 NEWS_SEEN_KEY = "skolengo_news_seen"
+
+# hass.data key mapping school id -> entry id of the config entry that owns the
+# school's single news sensor (see news.claim_news_sensor).
+NEWS_OWNER_KEY = "skolengo_news_owner"

@@ -9,8 +9,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
+from .const import CONF_SCAN_INTERVAL, CONF_SCHOOL_ID, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import SkolengoDataUpdateCoordinator
+from .news import release_news_sensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,4 +101,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        school_id = entry.data[CONF_SCHOOL_ID]
+        if release_news_sensor(hass, school_id, entry.entry_id):
+            # This entry owned the school's news sensor: let a sibling entry
+            # of the same school take it over.
+            for other in hass.config_entries.async_loaded_entries(DOMAIN):
+                if other.entry_id != entry.entry_id and other.data.get(CONF_SCHOOL_ID) == school_id:
+                    hass.config_entries.async_schedule_reload(other.entry_id)
+                    break
     return unload_ok

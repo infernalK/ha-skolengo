@@ -85,3 +85,18 @@ def test_empty_fetch_is_ignored():
     coordinator._async_fire_news_events([{"id": "n0", "title": "Photo"}])  # noqa: SLF001
 
     assert fired == []
+
+
+def test_only_the_first_entry_of_a_school_owns_the_news_sensor():
+    from custom_components.skolengo.news import claim_news_sensor, release_news_sensor
+
+    hass = SimpleNamespace(data={})
+
+    assert claim_news_sensor(hass, "school-1", "entry-a") is True
+    assert claim_news_sensor(hass, "school-1", "entry-a") is True  # idempotent for the owner
+    assert claim_news_sensor(hass, "school-1", "entry-b") is False  # sibling
+    assert claim_news_sensor(hass, "school-2", "entry-c") is True  # other school
+
+    assert release_news_sensor(hass, "school-1", "entry-b") is False  # not the owner
+    assert release_news_sensor(hass, "school-1", "entry-a") is True
+    assert claim_news_sensor(hass, "school-1", "entry-b") is True  # sibling takes over
