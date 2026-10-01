@@ -1203,7 +1203,8 @@
     return `<span class="skolengo-badge neutral">${escapeHtml(status)}</span>`;
   }
 
-  class SkolengoAbsencesCard extends HTMLElement {
+  function createVieScolaireCard(listKeys, editorTag) {
+  return class extends HTMLElement {
     setConfig(config) {
       if (!config || !config.entity) {
         throw new Error('"entity" est obligatoire dans la configuration de la carte');
@@ -1224,7 +1225,7 @@
     getCardSize() {
       const stateObj = this._hass && this._hass.states[this._config.entity];
       const attrs = (stateObj && stateObj.attributes) || {};
-      const listKey = ABSENCE_LIST_KEYS.find((key) => Array.isArray(attrs[key]));
+      const listKey = listKeys.find((key) => Array.isArray(attrs[key]));
       const items = listKey ? attrs[listKey] : [];
       return 1 + Math.max(1, items.length);
     }
@@ -1246,7 +1247,7 @@
       }
 
       const attrs = stateObj.attributes || {};
-      const listKey = ABSENCE_LIST_KEYS.find((key) => Array.isArray(attrs[key]));
+      const listKey = listKeys.find((key) => Array.isArray(attrs[key]));
       const items = listKey ? attrs[listKey] : [];
       const defaultTitles = {
         absences: "Absences",
@@ -1317,21 +1318,35 @@
     }
 
     static getConfigElement() {
-      return document.createElement("skolengo-absences-card-editor");
+      return document.createElement(editorTag);
     }
 
     static getStubConfig(hass) {
-      return { entity: findFirstCompatibleEntity(hass, ABSENCE_LIST_KEYS) };
+      return { entity: findFirstCompatibleEntity(hass, listKeys) };
     }
+  };
   }
-  safeDefine("skolengo-absences-card", SkolengoAbsencesCard);
-  safeDefine(
-    "skolengo-absences-card-editor",
-    createConfigEditor(
-      [TITLE_FIELD, boolField("display_header"), boolField("display_comment"), MAX_ITEMS_FIELD],
-      ABSENCE_LIST_KEYS
-    )
-  );
+
+  const VIE_SCOLAIRE_EDITOR_FIELDS = [
+    TITLE_FIELD,
+    boolField("display_header"),
+    boolField("display_comment"),
+    MAX_ITEMS_FIELD,
+  ];
+
+  // One card per type, each tied to its own sensor. The absences card
+  // still accepts every key so existing dashboards that pointed it at the
+  // delays/exemptions sensors keep working.
+  const VIE_SCOLAIRE_CARDS = [
+    { tag: "skolengo-absences-card", keys: ABSENCE_LIST_KEYS },
+    { tag: "skolengo-delays-card", keys: ["delays"] },
+    { tag: "skolengo-observations-card", keys: ["observations"] },
+    { tag: "skolengo-punishments-card", keys: ["punishments"] },
+  ];
+  for (const { tag, keys } of VIE_SCOLAIRE_CARDS) {
+    safeDefine(tag, createVieScolaireCard(keys, `${tag}-editor`));
+    safeDefine(`${tag}-editor`, createConfigEditor(VIE_SCOLAIRE_EDITOR_FIELDS, keys));
+  }
 
   // ---------------------------------------------------------------------
   // Enregistrement dans le sélecteur de cartes Lovelace
@@ -1374,8 +1389,25 @@
     {
       type: "skolengo-absences-card",
       name: "Skolengo - Absences",
-      description:
-        "Affiche les absences (ou, selon l'entité pointée, les retards / dispenses / observations / punitions) depuis un capteur Skolengo.",
+      description: "Affiche les absences (ou les dispenses, selon l'entité pointée) depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-delays-card",
+      name: "Skolengo - Retards",
+      description: "Affiche les retards depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-observations-card",
+      name: "Skolengo - Observations",
+      description: "Affiche les observations (positives et négatives) depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-punishments-card",
+      name: "Skolengo - Punitions",
+      description: "Affiche les punitions depuis un capteur Skolengo.",
       preview: false,
     },
   ];

@@ -26,7 +26,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
 - **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified` et `lesson_added`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
-- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
+- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences, retards, observations, punitions), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
 
@@ -68,7 +68,7 @@ Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'in
 
 Cette intégration embarque 6 cartes Lovelace personnalisées, directement inspirées de celles du projet [lovelace-pronote](https://github.com/delphiki/lovelace-pronote) (le compagnon Lovelace de `hass-pronote`), adaptées au modèle de données de Skolengo.
 
-Contrairement à Pronote, Skolengo ne distingue pas notes numériques / évaluations de compétences au niveau de l'API (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. `skolengo-evaluations-card` ("Notes") affiche donc les deux, mais `skolengo-competencies-card` ("Compétences") permet de n'afficher que les évaluations de compétences sur une carte séparée, pour qui préfère les dissocier. Il n'y a en revanche pas de carte "retards" dédiée : `skolengo-absences-card` couvre ce besoin en la pointant sur le bon capteur (voir plus bas).
+Contrairement à Pronote, Skolengo ne distingue pas notes numériques / évaluations de compétences au niveau de l'API (un seul objet "évaluation" qui porte soit une note, soit des niveaux de compétences) et ne propose pas d'endpoint dédié aux retards. `skolengo-evaluations-card` ("Notes") affiche donc les deux, mais `skolengo-competencies-card` ("Compétences") permet de n'afficher que les évaluations de compétences sur une carte séparée, pour qui préfère les dissocier. Les absences, retards, observations et punitions ont chacun leur carte dédiée (voir plus bas).
 
 Elles sont **chargées automatiquement** dès que l'intégration est configurée : aucune ressource Lovelace à ajouter manuellement (`skolengo-cards.js` est servi par l'intégration elle-même et enregistré comme module JS au démarrage de Home Assistant).
 
@@ -148,9 +148,16 @@ title: Moyennes
 display_class_average: true
 ```
 
-### `skolengo-absences-card`
+### Cartes "vie scolaire" : absences, retards, observations, punitions
 
-Absences enregistrées, à associer à un capteur `..._absences`. Skolengo remonte en réalité un seul journal "vie scolaire" (absences, retards, dispenses) : cette même carte fonctionne donc aussi telle quelle pointée sur `..._delays` (retards) ou `..._exemptions` (dispenses, capteur désactivé par défaut), sans qu'il soit nécessaire d'utiliser une carte différente.
+Quatre cartes, une par type, chacune à associer au capteur correspondant :
+
+| Carte | Capteur |
+|---|---|
+| `skolengo-absences-card` | `..._absences` |
+| `skolengo-delays-card` | `..._delays` (retards) |
+| `skolengo-observations-card` | `..._observations` |
+| `skolengo-punishments-card` | `..._punishments` (punitions) |
 
 <img src="docs/img/skolengo-absences-card.png" alt="Rendu de la carte skolengo-absences-card" width="380">
 
@@ -161,12 +168,13 @@ display_comment: true
 ```
 
 ```yaml
-type: custom:skolengo-absences-card
-entity: sensor.skolengo_..._delays
-title: Retards
+type: custom:skolengo-observations-card
+entity: sensor.skolengo_..._observations
 ```
 
-**Observations et punitions** : elles proviennent d'un autre endpoint (`/schooling-events-wrappers`, non documenté, repéré dans l'application mobile) et sont exposées par les capteurs `..._observations` (nombre total ; attributs `positive`, `negative` et la liste détaillée : date, motif, tonalité, émetteur, commentaire) et `..._punishments`. La même carte `skolengo-absences-card` fonctionne en la pointant sur l'un de ces capteurs. Les observations ont été vérifiées sur un vrai compte ; les punitions n'ont pas pu l'être faute d'exemple (leur format est géré de façon prudente et pourra être ajusté).
+`skolengo-absences-card` accepte aussi `..._exemptions` (dispenses, capteur désactivé par défaut) et, pour rester compatible avec les anciens tableaux de bord, `..._delays`.
+
+**Observations et punitions** : elles proviennent d'un autre endpoint (`/schooling-events-wrappers`, non documenté, repéré dans l'application mobile). Le capteur `..._observations` donne le nombre total (attributs `positive`, `negative` et la liste détaillée : date, motif, tonalité, émetteur, commentaire) ; `..._punishments` donne les punitions. Les observations ont été vérifiées sur un vrai compte ; les punitions n'ont pas pu l'être faute d'exemple (leur format est géré de façon prudente et pourra être ajusté).
 
 ## Exemples d'automatisations
 
