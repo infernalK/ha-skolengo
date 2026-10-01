@@ -76,6 +76,7 @@
       "exemptions": { "name": "Exemptions" },
       "observations": { "name": "Observations" },
       "punishments": { "name": "Punishments" },
+      "news": { "name": "News" },
       "evaluations": { "name": "Grades" },
       "average_grade": { "name": "Overall average" }
     },

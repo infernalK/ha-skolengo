@@ -87,3 +87,8 @@ EVENT_TYPE_NEW_ABSENCE = "new_absence"
 EVENT_TYPE_NEW_DELAY = "new_delay"
 EVENT_TYPE_NEW_OBSERVATION = "new_observation"
 EVENT_TYPE_NEW_PUNISHMENT = "new_punishment"
+EVENT_TYPE_NEW_NEWS = "new_news"
+
+# hass.data key holding, per school, the news ids already reported (shared by
+# all config entries of that school so siblings don't fire duplicate events).
+NEWS_SEEN_KEY = "skolengo_news_seen"

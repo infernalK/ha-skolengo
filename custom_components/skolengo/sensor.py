@@ -41,6 +41,7 @@ async def async_setup_entry(
             SkolengoExemptionsSensor(coordinator, entry),
             SkolengoObservationsSensor(coordinator, entry),
             SkolengoPunishmentsSensor(coordinator, entry),
+            SkolengoNewsSensor(coordinator, entry),
             SkolengoEvaluationsSensor(coordinator, entry),
             SkolengoAverageGradeSensor(coordinator, entry),
         ]
@@ -79,6 +80,10 @@ class SkolengoSensorBase(CoordinatorEntity[SkolengoDataUpdateCoordinator], Senso
     @property
     def _absences(self) -> list[dict]:
         return self.coordinator.data.absences if self.coordinator.data else []
+
+    @property
+    def _news(self) -> list[dict]:
+        return self.coordinator.data.news if self.coordinator.data else []
 
     @property
     def _school_life(self) -> dict:
@@ -490,6 +495,32 @@ class SkolengoPunishmentsSensor(SkolengoSensorBase):
             "to_realize": life.get("punishments_to_realize"),
             "punishments": (life.get("punishments") or [])[:30],
         }
+
+
+class SkolengoNewsSensor(SkolengoSensorBase):
+    """Latest school news ("actualités"); the full list is in `news`."""
+
+    _attr_translation_key = "news"
+    _unrecorded_attributes = frozenset({"news"})
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "news", "Actualités")
+
+    @property
+    def native_value(self) -> str | None:
+        news = self._news
+        if not news:
+            return None
+        return (news[0].get("title") or "")[:255] or None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        # Article bodies are shortened to keep the attributes small.
+        news = [
+            {**n, "content": (n["content"][:600] if n.get("content") else None)}
+            for n in self._news[:10]
+        ]
+        return {"count": len(self._news), "news": news}
 
 
 def _average_mark(items: list[dict]) -> float | None:

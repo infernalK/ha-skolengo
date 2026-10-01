@@ -38,6 +38,7 @@ async def async_get_config_entry_diagnostics(
                 "homework": data.homework,
                 "absences": data.absences,
                 "school_life": data.school_life,
+                "news": data.news,
                 "evaluations": data.evaluations,
                 "periods": data.periods,
                 "student_info": data.student_info,

@@ -13,6 +13,7 @@
       "exemptions": { "default": "mdi:hand-back-right-off-outline" },
       "observations": { "default": "mdi:eye-outline" },
       "punishments": { "default": "mdi:gavel" },
+      "news": { "default": "mdi:newspaper-variant-outline" },
       "evaluations": { "default": "mdi:notebook-outline" },
       "average_grade": { "default": "mdi:school-outline" }
     },

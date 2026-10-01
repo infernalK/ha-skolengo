@@ -974,6 +974,15 @@ class SkolengoClient:
         items = jsonapi_deserialize(doc) or []
         return items[0] if items else {}
 
+    def get_school_news(self) -> list[dict[str, Any]]:
+        """School-wide news ("actualités"); not tied to a student."""
+        params = {
+            "include": "author,author.person,author.technicalUser,attachments",
+            "page[limit]": 20,
+        }
+        doc = self._request("GET", "/schools-info", params=params)
+        return jsonapi_deserialize(doc) or []
+
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
         # `include=periods` is required to resolve the `periods` relationship
         # into full {id, label, startDate, endDate} objects -- without it,
