@@ -85,6 +85,10 @@ def _decode_jwt_payload(token: str) -> dict[str, Any]:
         raise SkolengoAuthError(f"Unable to decode id_token: {err}") from err
 
 
+# `absenceType` values accepted by /absence-files (anything else is a 400).
+ABSENCE_TYPES = ("ABSENCE", "LATENESS", "EXEMPTION", "DEPARTURE")
+
+
 def jsonapi_deserialize(document: dict[str, Any]) -> Any:
     """Flatten a JSON:API document (data + included) into plain nested dicts.
 
@@ -941,9 +945,31 @@ class SkolengoClient:
             raise SkolengoApiError(f"Unable to update homework {homework_id}: {err}") from err
 
     def get_absences(self, student_id: str) -> list[dict[str, Any]]:
-        params = {"filter[student.id]": student_id}
-        doc = self._request("GET", "/absence-files", params=params)
-        return jsonapi_deserialize(doc) or []
+        """Fetch absence files, one `absenceType` at a time.
+
+        Without a `filter[currentState.absenceType]`, Skolengo's server
+        fails with a 500 (`Unrecognized field "totalResourceCount"` in its
+        own counters deserialization), so the unfiltered call can't be
+        used; querying each type separately works. A type that still
+        fails is skipped so one bad type doesn't hide the others.
+        """
+        absences: list[dict[str, Any]] = []
+        errors: list[SkolengoApiError] = []
+        for absence_type in ABSENCE_TYPES:
+            params = {
+                "filter[student.id]": student_id,
+                "filter[currentState.absenceType]": absence_type,
+                "include": "currentState,currentState.absenceReason",
+            }
+            try:
+                doc = self._request("GET", "/absence-files", params=params)
+            except SkolengoApiError as err:
+                errors.append(err)
+                continue
+            absences.extend(jsonapi_deserialize(doc) or [])
+        if errors and len(errors) == len(ABSENCE_TYPES):
+            raise errors[0]
+        return absences
 
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
         # `include=periods` is required to resolve the `periods` relationship
