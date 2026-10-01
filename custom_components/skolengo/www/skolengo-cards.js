@@ -1309,6 +1309,13 @@
               ${item.category ? `<div class="skolengo-line">${escapeHtml(item.category)}</div>` : ""}
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
               ${
+                Array.isArray(item.attachments) && item.attachments.length
+                  ? `<div class="skolengo-line">📎 ${escapeHtml(
+                      item.attachments.map((a) => a.name).filter(Boolean).join(", ")
+                    )}</div>`
+                  : ""
+              }
+              ${
                 item.issuer || item.author
                   ? `<div class="skolengo-line">${escapeHtml(item.issuer || item.author)}</div>`
                   : ""

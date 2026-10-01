@@ -27,6 +27,19 @@ def _author_name(author: dict | None) -> str | None:
     return technical.get("label") or technical.get("name") or None
 
 
+def _file(file: dict | None) -> dict | None:
+    """One `schoolInfoFile` (attachment or illustration). The `url` points to
+    the school's ENT and generally needs an ENT login to open."""
+    if not isinstance(file, dict):
+        return None
+    return {
+        "name": file.get("name"),
+        "mime_type": file.get("mimeType"),
+        "size": file.get("size"),
+        "url": file.get("url"),
+    }
+
+
 def flatten_news(item: dict) -> dict:
     return {
         "id": item.get("id"),
@@ -36,14 +49,15 @@ def flatten_news(item: dict) -> dict:
         "content": html_to_text(item.get("content")) or None,
         "url": item.get("url") or item.get("linkedInfoUrl") or item.get("linkedWebSiteUrl"),
         "author": _author_name(item.get("author")),
-        "attachments": [a.get("name") or a.get("fileName") for a in item.get("attachments") or [] if isinstance(a, dict)],
+        "image": _file(item.get("illustration")),
+        "attachments": [f for f in (_file(a) for a in item.get("attachments") or []) if f],
     }
 
 
 def flatten_school_news(items: list[dict] | None) -> list[dict]:
-    """Newest first; entries without a title and content are dropped."""
+    """Newest first; entries with no title, text or image are dropped."""
     news = [flatten_news(i) for i in items or []]
-    news = [n for n in news if n["title"] or n["content"]]
+    news = [n for n in news if n["title"] or n["content"] or n["image"]]
     news.sort(key=lambda n: n["date"] or "", reverse=True)
     return news
 

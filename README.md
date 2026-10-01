@@ -184,7 +184,7 @@ entity: sensor.skolengo_..._observations
 
 ### `skolengo-news-card`
 
-Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, pièces jointes). Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
+Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, `image` (l'illustration de l'article, souvent le seul contenu d'une annonce) et `attachments` (nom, type, taille, lien des pièces jointes). Les liens pointent vers l'ENT de l'établissement et nécessitent d'y être connecté. Les pièces jointes ne sont disponibles qu'article par article côté Skolengo : elles sont récupérées une seule fois pour chacune des 10 actualités les plus récentes. Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
 
 <img src="docs/img/skolengo-news-card.png" alt="Rendu de la carte skolengo-news-card" width="380">
 
@@ -321,7 +321,7 @@ action:
       message: "{{ trigger.event.data.summary or trigger.event.data.content }}"
 ```
 
-Données de `new_news` : `school_name`, `id`, `date`, `title`, `summary`, `content` (texte brut), `author`, `url`, `attachments`. Les actualités appartiennent à l'établissement : si plusieurs enfants y sont scolarisés, un seul événement est émis par article (et non un par enfant), sans champ `student_name`.
+Données de `new_news` : `school_name`, `id`, `date`, `title`, `summary`, `content` (texte brut), `author`, `url`, `image` et `attachments`. Les actualités appartiennent à l'établissement : si plusieurs enfants y sont scolarisés, un seul événement est émis par article (et non un par enfant), sans champ `student_name`.
 
 ## Signaler un problème
 

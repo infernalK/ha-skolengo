@@ -975,13 +975,24 @@ class SkolengoClient:
         return items[0] if items else {}
 
     def get_school_news(self) -> list[dict[str, Any]]:
-        """School-wide news ("actualités"); not tied to a student."""
+        """School-wide news ("actualités"); not tied to a student.
+
+        The list never fills `attachments` (the server returns it empty);
+        those only come from `get_school_news_item()`. The `illustration`
+        (the article's picture) does come with the list.
+        """
         params = {
-            "include": "author,author.person,author.technicalUser,attachments",
+            "include": "illustration,author,author.person,author.technicalUser",
             "page[limit]": 20,
         }
         doc = self._request("GET", "/schools-info", params=params)
         return jsonapi_deserialize(doc) or []
+
+    def get_school_news_item_attachments(self, news_id: str) -> list[dict[str, Any]]:
+        """Attachments of one news article (only available per article)."""
+        doc = self._request("GET", f"/schools-info/{news_id}", params={"include": "attachments"})
+        item = jsonapi_deserialize(doc) or {}
+        return item.get("attachments") or []
 
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
         # `include=periods` is required to resolve the `periods` relationship
