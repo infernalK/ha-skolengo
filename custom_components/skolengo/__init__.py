@@ -12,6 +12,7 @@ from homeassistant.loader import async_get_integration
 from .const import CONF_SCAN_INTERVAL, CONF_SCHOOL_ID, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import SkolengoDataUpdateCoordinator
 from .news import release_news_sensor
+from .news_files import SkolengoNewsFileView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 STATIC_PATH = "/skolengo_static"
 JS_FILENAME = "skolengo-cards.js"
 _FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_registered"
+_VIEW_REGISTERED_KEY = f"{DOMAIN}_news_view_registered"
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
@@ -75,6 +77,9 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Skolengo from a config entry."""
     await _async_register_frontend(hass)
+    if not hass.data.get(_VIEW_REGISTERED_KEY):
+        hass.http.register_view(SkolengoNewsFileView())
+        hass.data[_VIEW_REGISTERED_KEY] = True
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = SkolengoDataUpdateCoordinator(
