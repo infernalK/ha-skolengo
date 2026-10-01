@@ -38,6 +38,8 @@ async def async_setup_entry(
             SkolengoAbsencesSensor(coordinator, entry),
             SkolengoDelaysSensor(coordinator, entry),
             SkolengoExemptionsSensor(coordinator, entry),
+            SkolengoObservationsSensor(coordinator, entry),
+            SkolengoPunishmentsSensor(coordinator, entry),
             SkolengoEvaluationsSensor(coordinator, entry),
             SkolengoAverageGradeSensor(coordinator, entry),
         ]
@@ -76,6 +78,10 @@ class SkolengoSensorBase(CoordinatorEntity[SkolengoDataUpdateCoordinator], Senso
     @property
     def _absences(self) -> list[dict]:
         return self.coordinator.data.absences if self.coordinator.data else []
+
+    @property
+    def _school_life(self) -> dict:
+        return self.coordinator.data.school_life if self.coordinator.data else {}
 
     @property
     def _evaluations(self) -> list[dict]:
@@ -391,11 +397,8 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
     scolaire" log covering absences, lateness ("retards") and exemptions
     ("dispenses") -- see `SkolengoDelaysSensor` and
     `SkolengoExemptionsSensor` below, which read the same underlying data
-    filtered by type. Note: "observations", "punitions" and "sanctions"
-    (visible on the full Skolengo web portal) are NOT covered by this
-    endpoint and don't appear to be exposed by the API this integration
-    uses at all -- they may only exist through the school's separate
-    Kosmos ENT web pages, not the mobile-app API this integration talks to.
+    filtered by type. "Observations" and "punitions" come from a different
+    endpoint -- see `SkolengoObservationsSensor` / `SkolengoPunishmentsSensor`.
     """
 
     _attr_native_unit_of_measurement = "absences"
@@ -457,6 +460,59 @@ class SkolengoExemptionsSensor(SkolengoSensorBase):
     @property
     def extra_state_attributes(self) -> dict:
         return {"exemptions": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
+
+
+class SkolengoObservationsSensor(SkolengoSensorBase):
+    """Number of observations (positive + negative) of the "vie scolaire"."""
+
+    _attr_native_unit_of_measurement = "observations"
+    _attr_translation_key = "observations"
+    _unrecorded_attributes = frozenset({"observations"})
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "observations", "Observations")
+
+    @property
+    def native_value(self) -> int | None:
+        life = self._school_life
+        if not life:
+            return None
+        return (life.get("positive") or 0) + (life.get("negative") or 0)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        life = self._school_life
+        return {
+            "positive": life.get("positive"),
+            "negative": life.get("negative"),
+            "observations": (life.get("observations") or [])[:30],
+        }
+
+
+class SkolengoPunishmentsSensor(SkolengoSensorBase):
+    """Number of recorded punishments ("punitions")."""
+
+    _attr_native_unit_of_measurement = "punitions"
+    _attr_translation_key = "punishments"
+    _unrecorded_attributes = frozenset({"punishments"})
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "punishments", "Punitions")
+
+    @property
+    def native_value(self) -> int | None:
+        life = self._school_life
+        if not life:
+            return None
+        return len(life.get("punishments") or [])
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        life = self._school_life
+        return {
+            "to_realize": life.get("punishments_to_realize"),
+            "punishments": (life.get("punishments") or [])[:30],
+        }
 
 
 def _average_mark(items: list[dict]) -> float | None:

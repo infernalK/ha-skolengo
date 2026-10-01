@@ -1182,13 +1182,15 @@
   //
   // Generic: works for any of the three "vie scolaire" sensors, which all
   // share the same item shape but expose it under a different attribute
-  // key -- absences ("absences"), retards ("delays") or dispenses
-  // ("exemptions"). The card looks for whichever key is present, in that
-  // order, so pointing it at sensor.skolengo_..._delays or
-  // sensor.skolengo_..._exemptions "just works" without a separate card.
+  // key -- absences ("absences"), retards ("delays"), dispenses
+  // ("exemptions"), observations ("observations") or punitions
+  // ("punishments"). The card looks for whichever key is present, in that
+  // order, so pointing it at e.g. sensor.skolengo_..._delays "just works"
+  // without a separate card. Observations/punitions items carry a single
+  // `date` (instead of start/end) and an `issuer`.
   // ---------------------------------------------------------------------
 
-  const ABSENCE_LIST_KEYS = ["absences", "delays", "exemptions"];
+  const ABSENCE_LIST_KEYS = ["absences", "delays", "exemptions", "observations", "punishments"];
 
   function statusBadge(status) {
     if (!status) return "";
@@ -1246,11 +1248,19 @@
       const attrs = stateObj.attributes || {};
       const listKey = ABSENCE_LIST_KEYS.find((key) => Array.isArray(attrs[key]));
       const items = listKey ? attrs[listKey] : [];
-      const defaultTitles = { absences: "Absences", delays: "Retards", exemptions: "Dispenses" };
+      const defaultTitles = {
+        absences: "Absences",
+        delays: "Retards",
+        exemptions: "Dispenses",
+        observations: "Observations",
+        punishments: "Punitions",
+      };
       const defaultEmpty = {
         absences: "Aucune absence enregistrée",
         delays: "Aucun retard enregistré",
         exemptions: "Aucune dispense enregistrée",
+        observations: "Aucune observation enregistrée",
+        punishments: "Aucune punition enregistrée",
       };
 
       let html = "";
@@ -1269,22 +1279,29 @@
       } else {
         html += '<div class="skolengo-list">';
         for (const item of items.slice(0, this._config.max_items)) {
-          const start = parseDate(item.start);
+          const start = parseDate(item.start || item.date);
           const end = parseDate(item.end);
           const period =
             start && end
               ? `${FR_DATE_SHORT_FMT.format(start)} ${FR_TIME_FMT.format(start)} - ${
                   isSameDay(start, end) ? "" : FR_DATE_SHORT_FMT.format(end) + " "
                 }${FR_TIME_FMT.format(end)}`
-              : formatDateShort(item.start);
+              : formatDateShort(item.start || item.date);
+          const toneBadge =
+            item.tone === "NEGATIVE"
+              ? `<span class="skolengo-badge warning">Négative</span>`
+              : item.tone === "POSITIVE"
+              ? `<span class="skolengo-badge success">Positive</span>`
+              : "";
 
           html += `<div class="skolengo-item" style="--item-color:var(--primary-color)">
             <div class="skolengo-item-main">
               <div class="skolengo-item-top">
                 <span class="skolengo-subject">${escapeHtml(period)}</span>
-                ${statusBadge(item.status)}
+                ${statusBadge(item.status)}${toneBadge}
               </div>
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
+              ${item.issuer ? `<div class="skolengo-line">${escapeHtml(item.issuer)}</div>` : ""}
               ${
                 this._config.display_comment && item.comment
                   ? `<div class="skolengo-line">${escapeHtml(item.comment)}</div>`
@@ -1358,7 +1375,7 @@
       type: "skolengo-absences-card",
       name: "Skolengo - Absences",
       description:
-        "Affiche les absences (ou, selon l'entité pointée, les retards / dispenses) depuis un capteur Skolengo.",
+        "Affiche les absences (ou, selon l'entité pointée, les retards / dispenses / observations / punitions) depuis un capteur Skolengo.",
       preview: false,
     },
   ];
