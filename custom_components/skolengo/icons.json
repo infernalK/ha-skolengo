@@ -11,6 +11,8 @@
       "absences": { "default": "mdi:account-off-outline" },
       "delays": { "default": "mdi:clock-alert-outline" },
       "exemptions": { "default": "mdi:hand-back-right-off-outline" },
+      "observations": { "default": "mdi:eye-outline" },
+      "punishments": { "default": "mdi:gavel" },
       "evaluations": { "default": "mdi:notebook-outline" },
       "average_grade": { "default": "mdi:school-outline" }
     },

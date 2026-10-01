@@ -19,7 +19,7 @@ from .const import DOMAIN
 from .coordinator import SkolengoDataUpdateCoordinator
 
 TO_REDACT_ENTRY = {"refresh_token", "user_id"}
-TO_REDACT_DATA = {"firstName", "lastName", "dateOfBirth", "photoUrl", "student_name"}
+TO_REDACT_DATA = {"firstName", "lastName", "dateOfBirth", "photoUrl", "student_name", "issuer", "comment"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -37,6 +37,7 @@ async def async_get_config_entry_diagnostics(
                 "lessons": data.lessons,
                 "homework": data.homework,
                 "absences": data.absences,
+                "school_life": data.school_life,
                 "evaluations": data.evaluations,
                 "periods": data.periods,
                 "student_info": data.student_info,

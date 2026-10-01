@@ -37,6 +37,7 @@ from .const import (
 )
 from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
+from .school_life import flatten_schooling_events
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class SkolengoData:
     lessons: list[dict] = field(default_factory=list)
     homework: list[dict] = field(default_factory=list)
     absences: list[dict] = field(default_factory=list)
+    school_life: dict = field(default_factory=dict)
     evaluations: list[dict] = field(default_factory=list)
     periods: list[dict] = field(default_factory=list)
     student_name: str = ""
@@ -184,6 +186,12 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 # Skolengo's own API (not something we can fix); never fatal.
                 _LOGGER.debug("Unable to fetch absences (non-fatal): %s", err)
 
+            school_life: dict = {}
+            try:
+                school_life = flatten_schooling_events(client.get_schooling_events(self.student_id))
+            except SkolengoApiError as err:
+                _LOGGER.debug("Unable to fetch observations/punishments (non-fatal): %s", err)
+
             periods: list[dict] = []
             level_labels: dict[str, str] = {}
             try:
@@ -248,6 +256,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 lessons=lessons,
                 homework=homework,
                 absences=absences,
+                school_life=school_life,
                 evaluations=evaluations,
                 periods=periods,
                 next_alarm=next_alarm,

@@ -21,7 +21,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Prochain réveil (`sensor.skolengo_..._next_alarm`, horodatage) : heure du premier cours du prochain jour d'école, moins un délai réglable (temps de préparation), pratique pour déclencher une automatisation de réveil. Passe automatiquement au jour suivant une fois l'heure de réveil du jour dépassée (week-ends et vacances sans cours sont sautés).
   - Nombre de cours aujourd'hui
   - Nombre de devoirs à faire
-  - Nombre d'absences enregistrées (+ retards et dispenses, capteurs séparés)
+  - Nombre d'absences enregistrées (+ retards, dispenses, observations et punitions, capteurs séparés)
   - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
@@ -166,7 +166,7 @@ entity: sensor.skolengo_..._delays
 title: Retards
 ```
 
-**Note** : les "observations", punitions et sanctions visibles sur le portail web complet de Skolengo (rubrique "Vie scolaire") ne sont couvertes par aucun endpoint exposé par l'API utilisée ici (celle de l'application mobile, `api.skolengo.com`) — elles ne semblent accessibles que via les pages web propres à l'ENT Kosmos de l'établissement. Les cartes absences/retards/dispenses représentent donc la couverture maximale possible actuellement pour la "vie scolaire", pas une limitation volontaire.
+**Observations et punitions** : elles proviennent d'un autre endpoint (`/schooling-events-wrappers`, non documenté, repéré dans l'application mobile) et sont exposées par les capteurs `..._observations` (nombre total ; attributs `positive`, `negative` et la liste détaillée : date, motif, tonalité, émetteur, commentaire) et `..._punishments`. La même carte `skolengo-absences-card` fonctionne en la pointant sur l'un de ces capteurs. Les observations ont été vérifiées sur un vrai compte ; les punitions n'ont pas pu l'être faute d'exemple (leur format est géré de façon prudente et pourra être ajusté).
 
 ## Exemples d'automatisations
 

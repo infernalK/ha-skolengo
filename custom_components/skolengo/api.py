@@ -971,6 +971,23 @@ class SkolengoClient:
             raise errors[0]
         return absences
 
+    def get_schooling_events(self, student_id: str) -> dict[str, Any]:
+        """Observations and punishments (+ counters) of the "vie scolaire"
+        screen. Not covered by the reference scolengo-api client: the path
+        and relationships were read from the mobile app (Flutter) itself.
+        """
+        params = {
+            "filter[student.id]": student_id,
+            "include": (
+                "observations,observations.reason,observations.issuer,"
+                "punishments,punishments.reason,punishments.issuer,"
+                "punishments.category,absences,latenesses"
+            ),
+        }
+        doc = self._request("GET", "/schooling-events-wrappers", params=params)
+        items = jsonapi_deserialize(doc) or []
+        return items[0] if items else {}
+
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
         # `include=periods` is required to resolve the `periods` relationship
         # into full {id, label, startDate, endDate} objects -- without it,
