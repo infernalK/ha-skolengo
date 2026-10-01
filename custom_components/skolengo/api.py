@@ -774,6 +774,20 @@ class SkolengoClient:
         except ValueError as err:
             raise SkolengoApiError(f"Invalid JSON response from {path}: {err}") from err
 
+    def probe(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Raw GET used only by the `skolengo.probe_endpoints` debug service
+        to discover undocumented endpoints. Never raises on HTTP errors.
+        """
+        if self.tokens and self.tokens.is_expired:
+            self.refresh_access_token()
+        try:
+            resp = self._session.get(
+                f"{API_BASE_URL}{path}", params=params, headers=self._headers(), timeout=30
+            )
+        except requests.RequestException as err:
+            return {"path": path, "error": str(err)}
+        return {"path": path, "status": resp.status_code, "body": resp.text[:4000]}
+
     # ------------------------------------------------------------------
     # Endpoints
     # ------------------------------------------------------------------
