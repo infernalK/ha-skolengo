@@ -15,8 +15,7 @@
   "issue_tracker": "https://github.com/infernalK/ha-skolengo/issues",
   "quality_scale": "bronze",
   "requirements": [
-    "beautifulsoup4>=4.11.0",
-    "requests>=2.28.0"
+    "beautifulsoup4>=4.11.0"
   ],
   "version": "1.0.41"
 }
