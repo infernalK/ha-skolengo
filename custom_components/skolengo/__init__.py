@@ -115,9 +115,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             return {"error": "no Skolengo entry loaded"}
         results = []
         for path in paths:
-            params = {"filter[student.id]": coordinator.student_id}
+            # A path carrying its own query string is sent as-is; "{student}"
+            # in it is replaced by the student id.
+            if "?" in path:
+                path = path.replace("{student}", coordinator.student_id)
+                params = None
+            else:
+                params = {"filter[student.id]": coordinator.student_id}
             result = await hass.async_add_executor_job(coordinator.client.probe, path, params)
-            if result.get("status") in (400, 422):
+            if params and result.get("status") in (400, 422):
                 result = await hass.async_add_executor_job(coordinator.client.probe, path, None)
             _LOGGER.warning("Skolengo probe %s -> %s %s", path, result.get("status"), (result.get("body") or result.get("error") or "")[:500])
             results.append(result)
