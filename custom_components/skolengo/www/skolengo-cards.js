@@ -1255,6 +1255,7 @@
         exemptions: "Dispenses",
         observations: "Observations",
         punishments: "Punitions",
+        news: "Actualités",
       };
       const defaultEmpty = {
         absences: "Aucune absence enregistrée",
@@ -1262,6 +1263,7 @@
         exemptions: "Aucune dispense enregistrée",
         observations: "Aucune observation enregistrée",
         punishments: "Aucune punition enregistrée",
+        news: "Aucune actualité",
       };
 
       let html = "";
@@ -1300,15 +1302,20 @@
           html += `<div class="skolengo-item" style="--item-color:var(--primary-color)">
             <div class="skolengo-item-main">
               <div class="skolengo-item-top">
-                <span class="skolengo-subject">${escapeHtml(period)}</span>
+                <span class="skolengo-subject">${escapeHtml(item.title || period)}</span>
                 ${statusBadge(item.status)}${toneBadge}
               </div>
+              ${item.title ? `<div class="skolengo-line">${escapeHtml(period)}</div>` : ""}
               ${item.category ? `<div class="skolengo-line">${escapeHtml(item.category)}</div>` : ""}
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
-              ${item.issuer ? `<div class="skolengo-line">${escapeHtml(item.issuer)}</div>` : ""}
               ${
-                this._config.display_comment && item.comment
-                  ? `<div class="skolengo-line">${escapeHtml(item.comment)}</div>`
+                item.issuer || item.author
+                  ? `<div class="skolengo-line">${escapeHtml(item.issuer || item.author)}</div>`
+                  : ""
+              }
+              ${
+                this._config.display_comment && (item.comment || item.summary)
+                  ? `<div class="skolengo-line">${escapeHtml(item.comment || item.summary)}</div>`
                   : ""
               }
             </div>
@@ -1345,6 +1352,7 @@
     { tag: "skolengo-delays-card", keys: ["delays"] },
     { tag: "skolengo-observations-card", keys: ["observations"] },
     { tag: "skolengo-punishments-card", keys: ["punishments"] },
+    { tag: "skolengo-news-card", keys: ["news"] },
   ];
   for (const { tag, keys } of VIE_SCOLAIRE_CARDS) {
     safeDefine(tag, createVieScolaireCard(keys, `${tag}-editor`));
@@ -1411,6 +1419,12 @@
       type: "skolengo-punishments-card",
       name: "Skolengo - Punitions",
       description: "Affiche les punitions depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-news-card",
+      name: "Skolengo - Actualités",
+      description: "Affiche les actualités de l'établissement depuis un capteur Skolengo.",
       preview: false,
     },
   ];

@@ -25,8 +25,8 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
-- **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified`, `lesson_added`, `new_absence`, `new_delay`, `new_observation` et `new_punishment`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
-- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences, retards, observations, punitions), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
+- **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified`, `lesson_added`, `new_absence`, `new_delay`, `new_observation`, `new_punishment` et `new_news`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
+- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences, retards, observations, punitions, actualités), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
 
@@ -182,9 +182,21 @@ entity: sensor.skolengo_..._observations
 
 **Observations et punitions** : elles proviennent d'un autre endpoint (`/schooling-events-wrappers`, non documenté, repéré dans l'application mobile). Le capteur `..._observations` donne le nombre total (attributs `positive`, `negative` et la liste détaillée : date, motif, tonalité, émetteur, commentaire) ; `..._punishments` donne les punitions. Les observations ont été vérifiées sur un vrai compte ; les punitions n'ont pas pu l'être faute d'exemple (leur format est géré de façon prudente et pourra être ajusté).
 
+### `skolengo-news-card`
+
+Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, pièces jointes). Les actualités sont celles de l'établissement : les capteurs de deux enfants du même collège affichent les mêmes articles.
+
+<img src="docs/img/skolengo-news-card.png" alt="Rendu de la carte skolengo-news-card" width="380">
+
+```yaml
+type: custom:skolengo-news-card
+entity: sensor.skolengo_..._news
+max_items: 5
+```
+
 ## Exemples d'automatisations
 
-Les neuf types d'événements sont émis sur `skolengo_event`, distingués par `event_data.type`. Quelques automatisations complètes pour s'en servir :
+Les dix types d'événements sont émis sur `skolengo_event`, distingués par `event_data.type`. Quelques automatisations complètes pour s'en servir :
 
 **Nouvelle note**
 ```yaml
@@ -293,6 +305,23 @@ action:
 ```
 
 Pour les autres, remplacez `type` par `new_punishment`, `new_absence` ou `new_delay`. Données disponibles : `student_name`, `id`, `date` (observations/punitions) ou `start`/`end`/`status` (absences/retards), `reason`, `issuer` ou `comment`, et selon le type `tone` (observations), `category`/`due`/`assigned_work` (punitions) ou `absence_type` (absences/retards). Comme pour les autres événements, rien n'est émis au démarrage, ni pour un type de donnée qui n'a pas pu être récupéré lors d'une mise à jour.
+
+**Nouvelle actualité de l'établissement**
+```yaml
+alias: Skolengo - Nouvelle actualité
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: new_news
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Actualité - {{ trigger.event.data.title }}"
+      message: "{{ trigger.event.data.summary or trigger.event.data.content }}"
+```
+
+Données de `new_news` : `school_name`, `id`, `date`, `title`, `summary`, `content` (texte brut), `author`, `url`, `attachments`. Les actualités appartiennent à l'établissement : si plusieurs enfants y sont scolarisés, un seul événement est émis par article (et non un par enfant), sans champ `student_name`.
 
 ## Signaler un problème
 

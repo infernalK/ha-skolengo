@@ -76,6 +76,7 @@
       "exemptions": { "name": "Dispenses" },
       "observations": { "name": "Observations" },
       "punishments": { "name": "Punitions" },
+      "news": { "name": "Actualités" },
       "evaluations": { "name": "Notes" },
       "average_grade": { "name": "Moyenne générale" }
     },

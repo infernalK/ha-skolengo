@@ -18,6 +18,7 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_SCHOOL_EMS_CODE,
     CONF_SCHOOL_ID,
+    CONF_SCHOOL_NAME,
     CONF_SCHOOL_OIDC_WELLKNOWN,
     CONF_STUDENT_ID,
     CONF_STUDENT_NAME,
@@ -32,8 +33,10 @@ from .const import (
     EVENT_TYPE_NEW_DELAY,
     EVENT_TYPE_NEW_GRADE,
     EVENT_TYPE_NEW_HOMEWORK,
+    EVENT_TYPE_NEW_NEWS,
     EVENT_TYPE_NEW_OBSERVATION,
     EVENT_TYPE_NEW_PUNISHMENT,
+    NEWS_SEEN_KEY,
     SCHOOL_YEAR_END_DAY,
     SCHOOL_YEAR_END_MONTH,
     SCHOOL_YEAR_START_DAY,
@@ -41,6 +44,7 @@ from .const import (
 )
 from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
+from .news import flatten_school_news
 from .school_life import flatten_absence_file, flatten_schooling_events
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +58,7 @@ class SkolengoData:
     homework: list[dict] = field(default_factory=list)
     absences: list[dict] = field(default_factory=list)
     school_life: dict = field(default_factory=dict)
+    news: list[dict] = field(default_factory=list)
     # False when every /absence-files request failed (so an empty
     # `absences` list means "unknown", not "none").
     absences_fetched: bool = False
@@ -206,6 +211,12 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             except SkolengoApiError as err:
                 _LOGGER.debug("Unable to fetch observations/punishments (non-fatal): %s", err)
 
+            news: list[dict] = []
+            try:
+                news = flatten_school_news(client.get_school_news())
+            except SkolengoApiError as err:
+                _LOGGER.debug("Unable to fetch school news (non-fatal): %s", err)
+
             periods: list[dict] = []
             level_labels: dict[str, str] = {}
             try:
@@ -271,6 +282,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 homework=homework,
                 absences=absences,
                 school_life=school_life,
+                news=news,
                 absences_fetched=absences_fetched,
                 evaluations=evaluations,
                 periods=periods,
@@ -291,6 +303,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._async_fire_new_homework_events(data.homework)
         self._async_fire_lesson_change_events(data.lessons, agenda_end)
         self._async_fire_school_life_events(data)
+        self._async_fire_news_events(data.news)
         return data
 
     def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
@@ -383,6 +396,33 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                             payload["absence_type"] = item["type"]
                         self.hass.bus.async_fire(EVENT_SKOLENGO, payload)
             self._known_school_life_ids[kind] = current_ids | (known or set())
+
+    def _async_fire_news_events(self, news: list[dict]) -> None:
+        """Fire `new_news` for school news not seen before.
+
+        News belongs to the school, not the student, so several config
+        entries of the same school (siblings) all see the same articles.
+        The "seen" set is therefore shared per school across entries, so
+        each article fires a single event. Nothing is fired the first time
+        a school is seen, nor when the fetch returned nothing.
+        """
+        if not news:
+            return
+        seen_by_school: dict[str, set[str]] = self.hass.data.setdefault(NEWS_SEEN_KEY, {})
+        current_ids = {n["id"] for n in news if n.get("id")}
+        seen = seen_by_school.get(self.school_id)
+        if seen is not None:
+            for item in news:
+                if item.get("id") and item["id"] not in seen:
+                    self.hass.bus.async_fire(
+                        EVENT_SKOLENGO,
+                        {
+                            "type": EVENT_TYPE_NEW_NEWS,
+                            "school_name": self.entry.data.get(CONF_SCHOOL_NAME, ""),
+                            **item,
+                        },
+                    )
+        seen_by_school[self.school_id] = current_ids | (seen or set())
 
     def _async_fire_lesson_change_events(
         self, lessons: list[dict], agenda_end: date
