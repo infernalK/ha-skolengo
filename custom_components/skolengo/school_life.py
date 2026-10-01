@@ -5,6 +5,30 @@ from __future__ import annotations
 from typing import Any
 
 
+def flatten_absence_file(absence: dict) -> dict:
+    """Flatten one Skolengo `/absence-files` record.
+
+    The real field names (confirmed against the reference API client's
+    TypeScript models, since Skolengo's own docs don't cover this) live
+    under `currentState`: `absenceType` (one of ABSENCE / LATENESS /
+    EXEMPTION / DEPARTURE), `absenceStartDateTime`, `absenceEndDateTime`,
+    `absenceFileStatus` (NEW / IN_PROGRESS / LOCKED / ...), `comment`, and
+    `absenceReason.longLabel`/`.code`.
+    """
+    state = absence.get("currentState") or {}
+    reason = state.get("absenceReason") or {}
+    return {
+        "id": absence.get("id"),
+        "type": state.get("absenceType"),
+        "start": state.get("absenceStartDateTime"),
+        "end": state.get("absenceEndDateTime"),
+        "status": state.get("absenceFileStatus"),
+        "reason": reason.get("longLabel"),
+        "reason_code": reason.get("code"),
+        "comment": state.get("comment"),
+    }
+
+
 def _person_name(person: Any) -> str | None:
     if not isinstance(person, dict):
         return None
