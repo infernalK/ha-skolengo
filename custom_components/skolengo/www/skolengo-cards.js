@@ -1279,6 +1279,15 @@
       this._render();
     }
 
+    // Home Assistant sets `hass` on every state change anywhere, and
+    // rewriting the shadow DOM each time would reload the <img> previews
+    // (visible flicker). Only touch the DOM when the markup changed.
+    _setHtml(html) {
+      if (html === this._lastHtml) return;
+      this._lastHtml = html;
+      this.shadowRoot.innerHTML = html;
+    }
+
     // Signed, temporary URL for a file served by the integration (so <img>
     // and links work without the frontend's auth header). Cached per card;
     // returns null until the first signature arrives, then re-renders.
@@ -1321,9 +1330,9 @@
       if (!this._hass || !this._config) return;
       const stateObj = this._hass.states[this._config.entity];
       if (!stateObj) {
-        this.shadowRoot.innerHTML = cardWrapper(
+        this._setHtml(cardWrapper(
           `<div class="skolengo-empty">Entité "${escapeHtml(this._config.entity)}" introuvable.</div>`
-        );
+        ));
         return;
       }
 
@@ -1408,7 +1417,7 @@
         html += "</div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this._setHtml(cardWrapper(html));
     }
 
     static getConfigElement() {
