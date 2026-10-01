@@ -33,6 +33,7 @@ def _file(file: dict | None) -> dict | None:
     if not isinstance(file, dict):
         return None
     return {
+        "id": file.get("id"),
         "name": file.get("name"),
         "mime_type": file.get("mimeType"),
         "size": file.get("size"),
@@ -81,3 +82,30 @@ def release_news_sensor(hass, school_id: str, entry_id: str) -> bool:
         del owners[school_id]
         return True
     return False
+
+
+def is_allowed_file_url(url: str | None, wellknown_url: str) -> bool:
+    """Whether the token may be sent to `url`: https, and on the same
+    registrable domain (last two labels) as the school's identity provider,
+    so a URL coming from the API can't be used to leak the token elsewhere."""
+    from urllib.parse import urlparse
+
+    try:
+        host = urlparse(url or "").hostname or ""
+        idp_host = urlparse(wellknown_url).hostname or ""
+        scheme = urlparse(url or "").scheme
+    except ValueError:
+        return False
+    if scheme != "https" or not host or not idp_host:
+        return False
+    return host.split(".")[-2:] == idp_host.split(".")[-2:]
+
+
+def find_news_file(news: list[dict], file_id: str) -> dict | None:
+    """The illustration or attachment with this id in the flattened news."""
+    for item in news:
+        files = [item.get("image"), *(item.get("attachments") or [])]
+        for file in files:
+            if file and str(file.get("id")) == str(file_id):
+                return file
+    return None

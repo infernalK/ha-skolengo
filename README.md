@@ -184,7 +184,7 @@ entity: sensor.skolengo_..._observations
 
 ### `skolengo-news-card`
 
-Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, `image` (l'illustration de l'article, souvent le seul contenu d'une annonce) et `attachments` (nom, type, taille, lien des pièces jointes). Les liens pointent vers l'ENT de l'établissement et nécessitent d'y être connecté ; dans la carte, chaque pièce jointe est un lien cliquable. Les pièces jointes ne sont disponibles qu'article par article côté Skolengo : elles sont récupérées une seule fois pour chacune des 10 actualités les plus récentes. Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
+Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, `image` (l'illustration de l'article, souvent le seul contenu d'une annonce) et `attachments` (nom, type, taille, lien des pièces jointes). Chaque fichier a aussi un `path` : l'adresse Home Assistant qui le sert (voir ci-dessous). Les pièces jointes ne sont disponibles qu'article par article côté Skolengo : elles sont récupérées une seule fois pour chacune des 10 actualités les plus récentes. Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
 
 <img src="docs/img/skolengo-news-card.png" alt="Rendu de la carte skolengo-news-card" width="380">
 
@@ -193,6 +193,10 @@ type: custom:skolengo-news-card
 entity: sensor.skolengo_..._news
 max_items: 5
 ```
+
+La carte affiche l'illustration de chaque article et les images jointes en aperçu (désactivable avec `display_images: false`), et chaque pièce jointe est un lien cliquable avec sa taille.
+
+**Comment sont servis les fichiers** : ils sont hébergés sur l'ENT de l'établissement et exigent normalement d'y être connecté. L'intégration les télécharge donc elle-même avec le jeton de l'API Skolengo (comme l'application mobile) et les sert à l'interface via `/api/skolengo/news_file/...`, une adresse protégée par l'authentification de Home Assistant (la carte demande une adresse signée temporaire). Précautions : seuls les fichiers des actualités déjà récupérées sont servis (l'appelant ne choisit jamais l'URL), le jeton n'est envoyé qu'au domaine de l'établissement, les fichiers sont limités à 20 Mo, et seuls les images (hors SVG) et les PDF sont affichés en ligne, tout le reste est forcé en téléchargement.
 
 ## Exemples d'automatisations
 

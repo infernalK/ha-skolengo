@@ -528,8 +528,20 @@ class SkolengoNewsSensor(SkolengoSensorBase):
     @property
     def extra_state_attributes(self) -> dict:
         # Article bodies are shortened to keep the attributes small.
+        def with_path(file: dict | None) -> dict | None:
+            # `path` is the Home Assistant URL that serves the file (the
+            # school's own URL needs an ENT login).
+            if not file or file.get("id") is None:
+                return file
+            return {**file, "path": f"/api/skolengo/news_file/{self._entry.entry_id}/{file['id']}"}
+
         news = [
-            {**n, "content": (n["content"][:600] if n.get("content") else None)}
+            {
+                **n,
+                "content": (n["content"][:600] if n.get("content") else None),
+                "image": with_path(n.get("image")),
+                "attachments": [with_path(a) for a in n.get("attachments") or []],
+            }
             for n in self._news[:10]
         ]
         return {"count": len(self._news), "news": news}

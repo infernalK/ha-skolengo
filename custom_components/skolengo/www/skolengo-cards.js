@@ -1212,20 +1212,52 @@
     return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
   }
 
-  function renderAttachments(attachments) {
+  function renderAttachments(attachments, signedUrl) {
     if (!Array.isArray(attachments)) return "";
     return attachments
       .filter((a) => a && a.name)
       .map((a) => {
         const size = formatFileSize(a.size);
         const name = escapeHtml(a.name);
-        const link = /^https?:\/\//i.test(a.url || "")
-          ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">${name}</a>`
+        // Prefer Home Assistant's own (signed) URL, which works without an
+        // ENT login; fall back to the school's URL when none is provided.
+        const href = a.path ? signedUrl(a.path) : /^https?:\/\//i.test(a.url || "") ? a.url : null;
+        const link = href
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">${name}</a>`
           : name;
         const sizeLabel = size ? ` <span class="skolengo-subtitle">(${size})</span>` : "";
         return `<div class="skolengo-line">📎 ${link}${sizeLabel}</div>`;
       })
       .join("");
+  }
+
+  // Image previews for a news article: its illustration, plus any image
+  // attachment (smaller). Only raster images served through Home Assistant
+  // (`path`) are previewed; SVG is never inlined.
+  function isPreviewableImage(file) {
+    return !!(
+      file &&
+      file.path &&
+      typeof file.mime_type === "string" &&
+      file.mime_type.startsWith("image/") &&
+      file.mime_type !== "image/svg+xml"
+    );
+  }
+
+  function renderImages(item, signedUrl) {
+    const thumb = (file, maxHeight) => {
+      const url = signedUrl(file.path);
+      if (!url) return "";
+      return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(
+        url
+      )}" alt="${escapeHtml(file.name || "")}" loading="lazy" style="max-width:100%;max-height:${maxHeight}px;border-radius:8px;margin:6px 6px 0 0;object-fit:contain"></a>`;
+    };
+    const parts = [];
+    if (isPreviewableImage(item.image)) parts.push(thumb(item.image, 220));
+    for (const file of item.attachments || []) {
+      if (isPreviewableImage(file)) parts.push(thumb(file, 120));
+    }
+    return parts.length ? `<div>${parts.join("")}</div>` : "";
   }
 
   function createVieScolaireCard(listKeys, editorTag) {
@@ -1245,6 +1277,30 @@
     set hass(hass) {
       this._hass = hass;
       this._render();
+    }
+
+    // Signed, temporary URL for a file served by the integration (so <img>
+    // and links work without the frontend's auth header). Cached per card;
+    // returns null until the first signature arrives, then re-renders.
+    _signedUrl(path) {
+      this._signed = this._signed || {};
+      const now = Date.now();
+      const hit = this._signed[path];
+      if (hit && hit.url && now < hit.expires) return hit.url;
+      if (!hit || (!hit.pending && now >= hit.expires)) {
+        this._signed[path] = { pending: true, expires: 0, url: hit ? hit.url : null };
+        this._hass
+          .callWS({ type: "auth/sign_path", path, expires: 3600 })
+          .then((result) => {
+            const url = this._hass.hassUrl ? this._hass.hassUrl(result.path) : result.path;
+            this._signed[path] = { url, expires: Date.now() + 50 * 60 * 1000 };
+            this._render();
+          })
+          .catch(() => {
+            this._signed[path] = { url: null, expires: Date.now() + 60 * 1000 };
+          });
+      }
+      return hit && hit.url ? hit.url : null;
     }
 
     getCardSize() {
@@ -1271,6 +1327,7 @@
         return;
       }
 
+      const signedUrl = (path) => this._signedUrl(path);
       const attrs = stateObj.attributes || {};
       const listKey = listKeys.find((key) => Array.isArray(attrs[key]));
       const items = listKey ? attrs[listKey] : [];
@@ -1333,7 +1390,8 @@
               ${item.title ? `<div class="skolengo-line">${escapeHtml(period)}</div>` : ""}
               ${item.category ? `<div class="skolengo-line">${escapeHtml(item.category)}</div>` : ""}
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
-              ${renderAttachments(item.attachments)}
+              ${this._config.display_images !== false ? renderImages(item, signedUrl) : ""}
+              ${renderAttachments(item.attachments, signedUrl)}
               ${
                 item.issuer || item.author
                   ? `<div class="skolengo-line">${escapeHtml(item.issuer || item.author)}</div>`
@@ -1382,7 +1440,11 @@
   ];
   for (const { tag, keys } of VIE_SCOLAIRE_CARDS) {
     safeDefine(tag, createVieScolaireCard(keys, `${tag}-editor`));
-    safeDefine(`${tag}-editor`, createConfigEditor(VIE_SCOLAIRE_EDITOR_FIELDS, keys));
+    const editorFields =
+      tag === "skolengo-news-card"
+        ? [...VIE_SCOLAIRE_EDITOR_FIELDS, boolField("display_images")]
+        : VIE_SCOLAIRE_EDITOR_FIELDS;
+    safeDefine(`${tag}-editor`, createConfigEditor(editorFields, keys));
   }
 
   // ---------------------------------------------------------------------

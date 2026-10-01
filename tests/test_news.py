@@ -15,7 +15,7 @@ RAW = [
         "linkedInfoUrl": None,
         "linkedWebSiteUrl": "https://example.org/vente",
         "author": {"person": {"title": "Mme", "firstName": "Anne", "lastName": "Lemaitre"}},
-        "attachments": [{"name": "affiche.pdf", "mimeType": "application/pdf", "size": 1234, "url": "https://ent/f/1"}],
+        "attachments": [{"id": "9", "name": "affiche.pdf", "mimeType": "application/pdf", "size": 1234, "url": "https://ent/f/1"}],
         "illustration": {"name": "affiche.png", "mimeType": "image/png", "size": 99, "url": "https://ent/f/2"},
     },
     {"id": "n0", "publicationDateTime": "2026-09-10T15:14:06Z", "title": "Photo", "content": "<html></html>"},
@@ -41,7 +41,7 @@ def test_flatten_orders_newest_first_and_cleans_content():
     assert first["author"] == "Mme Anne Lemaitre"
     assert first["url"] == "https://example.org/vente"
     assert first["attachments"] == [
-        {"name": "affiche.pdf", "mime_type": "application/pdf", "size": 1234, "url": "https://ent/f/1"}
+        {"id": "9", "name": "affiche.pdf", "mime_type": "application/pdf", "size": 1234, "url": "https://ent/f/1"}
     ]
     assert first["image"]["mime_type"] == "image/png"
     assert news[2]["attachments"] == [] and news[2]["image"] is None

@@ -85,6 +85,9 @@ def _decode_jwt_payload(token: str) -> dict[str, Any]:
         raise SkolengoAuthError(f"Unable to decode id_token: {err}") from err
 
 
+# Largest file the news-attachment proxy will download from the school ENT.
+MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+
 # `absenceType` values accepted by /absence-files (anything else is a 400).
 ABSENCE_TYPES = ("ABSENCE", "LATENESS", "EXEMPTION", "DEPARTURE")
 
@@ -993,6 +996,31 @@ class SkolengoClient:
         doc = self._request("GET", f"/schools-info/{news_id}", params={"include": "attachments"})
         item = jsonapi_deserialize(doc) or {}
         return item.get("attachments") or []
+
+    def download_file(self, url: str, max_bytes: int = MAX_DOWNLOAD_BYTES) -> tuple[bytes, str]:
+        """Download a file (a news attachment/illustration) hosted on the
+        school's ENT, authenticating with the API token like the mobile app.
+        Returns (content, content type). Raises SkolengoApiError if the file
+        is too large or the request fails.
+        """
+        if self.tokens and self.tokens.is_expired:
+            self.refresh_access_token()
+        headers = {"Authorization": f"Bearer {self.tokens.access_token}"} if self.tokens else {}
+        try:
+            with self._session.get(url, headers=headers, timeout=30, stream=True) as resp:
+                resp.raise_for_status()
+                declared = int(resp.headers.get("Content-Length") or 0)
+                if declared > max_bytes:
+                    raise SkolengoApiError(f"File too large ({declared} bytes)")
+                content = bytearray()
+                for chunk in resp.iter_content(64 * 1024):
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise SkolengoApiError("File too large")
+                content_type = resp.headers.get("Content-Type", "application/octet-stream").split(";")[0].strip()
+        except requests.RequestException as err:
+            raise SkolengoApiError(f"Unable to download file: {err}") from err
+        return bytes(content), content_type
 
     def get_evaluations_settings(self, student_id: str) -> list[dict[str, Any]]:
         # `include=periods` is required to resolve the `periods` relationship
