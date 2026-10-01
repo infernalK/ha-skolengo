@@ -161,6 +161,12 @@ Quatre cartes, une par type, chacune à associer au capteur correspondant :
 
 <img src="docs/img/skolengo-absences-card.png" alt="Rendu de la carte skolengo-absences-card" width="380">
 
+<img src="docs/img/skolengo-delays-card.png" alt="Rendu de la carte skolengo-delays-card" width="380">
+
+<img src="docs/img/skolengo-observations-card.png" alt="Rendu de la carte skolengo-observations-card" width="380">
+
+<img src="docs/img/skolengo-punishments-card.png" alt="Rendu de la carte skolengo-punishments-card" width="380">
+
 ```yaml
 type: custom:skolengo-absences-card
 entity: sensor.skolengo_..._absences

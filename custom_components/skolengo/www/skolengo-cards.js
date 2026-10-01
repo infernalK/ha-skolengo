@@ -1287,6 +1287,8 @@
               ? `${FR_DATE_SHORT_FMT.format(start)} ${FR_TIME_FMT.format(start)} - ${
                   isSameDay(start, end) ? "" : FR_DATE_SHORT_FMT.format(end) + " "
                 }${FR_TIME_FMT.format(end)}`
+              : start && item.tone
+              ? `${FR_DATE_SHORT_FMT.format(start)} ${FR_TIME_FMT.format(start)}`
               : formatDateShort(item.start || item.date);
           const toneBadge =
             item.tone === "NEGATIVE"
@@ -1301,6 +1303,7 @@
                 <span class="skolengo-subject">${escapeHtml(period)}</span>
                 ${statusBadge(item.status)}${toneBadge}
               </div>
+              ${item.category ? `<div class="skolengo-line">${escapeHtml(item.category)}</div>` : ""}
               ${item.reason ? `<div class="skolengo-line">${escapeHtml(item.reason)}</div>` : ""}
               ${item.issuer ? `<div class="skolengo-line">${escapeHtml(item.issuer)}</div>` : ""}
               ${
