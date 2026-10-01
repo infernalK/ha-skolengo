@@ -14,6 +14,7 @@ from .const import CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
 from .coordinator import SkolengoDataUpdateCoordinator
 from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework
+from .school_life import flatten_absence_file as _serialize_absence_file
 
 # Cap on the "assignments"/"done_assignments" attribute lists exposed by
 # `SkolengoHomeworkDueSensor` -- just to bound the live state's size to
@@ -364,30 +365,6 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
             "assignments": [flatten_homework(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
             "done_assignments": [flatten_homework(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
         }
-
-
-def _serialize_absence_file(absence: dict) -> dict:
-    """Flatten one Skolengo `/absence-files` record.
-
-    The real field names (confirmed against the reference API client's
-    TypeScript models, since Skolengo's own docs don't cover this) live
-    under `currentState`: `absenceType` (one of ABSENCE / LATENESS /
-    EXEMPTION / DEPARTURE), `absenceStartDateTime`, `absenceEndDateTime`,
-    `absenceFileStatus` (NEW / IN_PROGRESS / LOCKED / ...), `comment`, and
-    `absenceReason.longLabel`/`.code`.
-    """
-    state = absence.get("currentState") or {}
-    reason = state.get("absenceReason") or {}
-    return {
-        "id": absence.get("id"),
-        "type": state.get("absenceType"),
-        "start": state.get("absenceStartDateTime"),
-        "end": state.get("absenceEndDateTime"),
-        "status": state.get("absenceFileStatus"),
-        "reason": reason.get("longLabel"),
-        "reason_code": reason.get("code"),
-        "comment": state.get("comment"),
-    }
 
 
 class SkolengoAbsencesSensor(SkolengoSensorBase):

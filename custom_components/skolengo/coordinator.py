@@ -28,8 +28,12 @@ from .const import (
     EVENT_TYPE_LESSON_ADDED,
     EVENT_TYPE_LESSON_CANCELED,
     EVENT_TYPE_LESSON_MODIFIED,
+    EVENT_TYPE_NEW_ABSENCE,
+    EVENT_TYPE_NEW_DELAY,
     EVENT_TYPE_NEW_GRADE,
     EVENT_TYPE_NEW_HOMEWORK,
+    EVENT_TYPE_NEW_OBSERVATION,
+    EVENT_TYPE_NEW_PUNISHMENT,
     SCHOOL_YEAR_END_DAY,
     SCHOOL_YEAR_END_MONTH,
     SCHOOL_YEAR_START_DAY,
@@ -37,7 +41,7 @@ from .const import (
 )
 from .evaluations import apply_skill_level_labels, flatten_evaluations
 from .homework import flatten_homework
-from .school_life import flatten_schooling_events
+from .school_life import flatten_absence_file, flatten_schooling_events
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +54,9 @@ class SkolengoData:
     homework: list[dict] = field(default_factory=list)
     absences: list[dict] = field(default_factory=list)
     school_life: dict = field(default_factory=dict)
+    # False when every /absence-files request failed (so an empty
+    # `absences` list means "unknown", not "none").
+    absences_fetched: bool = False
     evaluations: list[dict] = field(default_factory=list)
     periods: list[dict] = field(default_factory=list)
     student_name: str = ""
@@ -86,6 +93,11 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._known_evaluation_ids: set[str] | None = None
         # Same idea for homework assignments and `new_homework` events.
         self._known_homework_ids: set[str] | None = None
+        # Same idea, per kind, for the vie scolaire events (`new_absence`,
+        # `new_delay`, `new_observation`, `new_punishment`). Grow-only, so an
+        # item that briefly drops out of a partially failing response is
+        # never reported as new again when it comes back.
+        self._known_school_life_ids: dict[str, set[str] | None] = {}
         # Lesson snapshots (subset of fields) seen on the previous update,
         # keyed by lesson id, used to detect cancellations, reschedules and
         # additions, firing `lesson_canceled`/`lesson_modified`/
@@ -179,8 +191,10 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 _LOGGER.warning("Unable to fetch homework: %s", err)
 
             absences: list[dict] = []
+            absences_fetched = False
             try:
                 absences = client.get_absences(self.student_id)
+                absences_fetched = True
             except SkolengoApiError as err:
                 # Known to 500 on some schools due to a server-side bug in
                 # Skolengo's own API (not something we can fix); never fatal.
@@ -257,6 +271,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 homework=homework,
                 absences=absences,
                 school_life=school_life,
+                absences_fetched=absences_fetched,
                 evaluations=evaluations,
                 periods=periods,
                 next_alarm=next_alarm,
@@ -275,6 +290,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._async_fire_new_grade_events(data.evaluations)
         self._async_fire_new_homework_events(data.homework)
         self._async_fire_lesson_change_events(data.lessons, agenda_end)
+        self._async_fire_school_life_events(data)
         return data
 
     def _async_fire_new_grade_events(self, evaluation_services: list[dict]) -> None:
@@ -331,6 +347,42 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                         )
 
         self._known_homework_ids = current_ids
+
+    def _async_fire_school_life_events(self, data: SkolengoData) -> None:
+        """Fire `new_absence` / `new_delay` / `new_observation` /
+        `new_punishment` for items not seen on a previous update. A kind
+        whose data couldn't be fetched this time is skipped entirely, and
+        nothing is fired the first time a kind is seen (startup)."""
+        kinds: dict[str, tuple[str, list[dict]]] = {}
+        if data.absences_fetched:
+            for event_type, absence_type in (
+                (EVENT_TYPE_NEW_ABSENCE, "ABSENCE"),
+                (EVENT_TYPE_NEW_DELAY, "LATENESS"),
+            ):
+                items = [
+                    flatten_absence_file(a)
+                    for a in data.absences
+                    if (a.get("currentState") or {}).get("absenceType") == absence_type
+                ]
+                kinds[absence_type] = (event_type, items)
+        if data.school_life:
+            kinds["OBSERVATION"] = (EVENT_TYPE_NEW_OBSERVATION, data.school_life.get("observations") or [])
+            kinds["PUNISHMENT"] = (EVENT_TYPE_NEW_PUNISHMENT, data.school_life.get("punishments") or [])
+
+        student_name = self.entry.data.get(CONF_STUDENT_NAME, "")
+        for kind, (event_type, items) in kinds.items():
+            current_ids = {item["id"] for item in items if item.get("id")}
+            known = self._known_school_life_ids.get(kind)
+            if known is not None:
+                for item in items:
+                    if item.get("id") and item["id"] not in known:
+                        # `type` is the event type; an absence item's own
+                        # `type` (ABSENCE/LATENESS) is kept as `absence_type`.
+                        payload = {**item, "type": event_type, "student_name": student_name}
+                        if "type" in item:
+                            payload["absence_type"] = item["type"]
+                        self.hass.bus.async_fire(EVENT_SKOLENGO, payload)
+            self._known_school_life_ids[kind] = current_ids | (known or set())
 
     def _async_fire_lesson_change_events(
         self, lessons: list[dict], agenda_end: date

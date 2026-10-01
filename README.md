@@ -25,7 +25,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Notes (nombre de notes/évaluations enregistrées, détail en attribut)
   - Moyenne générale (meilleur effort, voir limitations ci-dessous)
   - Classe, avec date de naissance / régime / établissement en attributs
-- **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified` et `lesson_added`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
+- **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified`, `lesson_added`, `new_absence`, `new_delay`, `new_observation` et `new_punishment`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation ou un nouveau devoir apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
 - **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences, retards, observations, punitions), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants.
@@ -184,7 +184,7 @@ entity: sensor.skolengo_..._observations
 
 ## Exemples d'automatisations
 
-Les cinq types d'événements sont émis sur `skolengo_event`, distingués par `event_data.type`. Quelques automatisations complètes pour s'en servir :
+Les neuf types d'événements sont émis sur `skolengo_event`, distingués par `event_data.type`. Quelques automatisations complètes pour s'en servir :
 
 **Nouvelle note**
 ```yaml
@@ -274,6 +274,25 @@ action:
 Données disponibles pour `lesson_canceled`/`lesson_modified`/`lesson_added`, notamment : `student_name`, `subject` (objet avec `label`), `startDateTime`, `endDateTime`, `location`/`room`, `teachers`, `canceled`.
 
 Ces trois derniers événements ne sont émis que pour un cours déjà vu lors d'une mise à jour précédente (annulation/modification), ou pour un cours dont la date était déjà à portée de la fenêtre de récupération précédente (ajout) : `lesson_added` ne se déclenche donc pas simplement parce qu'un cours entre dans la fenêtre glissante des 15 prochains jours au fil des mises à jour quotidiennes — seul un cours réellement inséré (ex. un rattrapage ajouté sur un jour déjà visible) le déclenche. Rien n'est émis lors du tout premier chargement après un (re)démarrage.
+
+**Nouvelle observation (ou punition, absence, retard)**
+```yaml
+alias: Skolengo - Nouvelle observation
+trigger:
+  - platform: event
+    event_type: skolengo_event
+    event_data:
+      type: new_observation
+action:
+  - service: notify.mobile_app_mon_telephone
+    data:
+      title: "Observation - {{ trigger.event.data.student_name }}"
+      message: >-
+        {{ trigger.event.data.reason }} ({{ trigger.event.data.tone }}) — {{ trigger.event.data.issuer }}
+        {{ trigger.event.data.comment }}
+```
+
+Pour les autres, remplacez `type` par `new_punishment`, `new_absence` ou `new_delay`. Données disponibles : `student_name`, `id`, `date` (observations/punitions) ou `start`/`end`/`status` (absences/retards), `reason`, `issuer` ou `comment`, et selon le type `tone` (observations), `category`/`due`/`assigned_work` (punitions) ou `absence_type` (absences/retards). Comme pour les autres événements, rien n'est émis au démarrage, ni pour un type de donnée qui n'a pas pu être récupéré lors d'une mise à jour.
 
 ## Signaler un problème
 
