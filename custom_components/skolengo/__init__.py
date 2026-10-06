@@ -47,25 +47,22 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
 
     www_dir = os.path.join(os.path.dirname(__file__), "www")
 
-    # The URL below is cache-busted with the integration's own version
-    # (?v=...), so it's safe -- and desirable -- to let browsers cache the
-    # response aggressively: a version bump always gets a brand new URL, so
-    # a stale cached copy can never be served across an update. Conversely,
-    # *without* long-lived caching here, every dashboard load has to reach
-    # the HA server over the network for this file, even for a version
-    # that's already been fetched -- so a transient network hiccup (e.g. on
-    # a mobile connection) can make every bundled card fail at once, until
-    # the browser retries successfully.
+    # No long-lived cache headers: the URL is already cache-busted (?v=
+    # version + content hash), and the iOS companion app was observed to
+    # lose the script when it came back from its HTTP cache on a remote
+    # (Nabu Casa) connection -- the first load after a cache reset worked,
+    # every following one showed the cards as "Erreur de configuration".
+    # HACS' own /hacsfiles (which works there) is served without them too.
     try:
         # Current, non-deprecated API (HA 2024.7+).
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(STATIC_PATH, www_dir, cache_headers=True)]
+            [StaticPathConfig(STATIC_PATH, www_dir, cache_headers=False)]
         )
     except ImportError:
         # Fallback for older Home Assistant Core versions.
-        hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=True)
+        hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=False)
 
     integration = await async_get_integration(hass, DOMAIN)
     # Cache-bust with the file's content hash as well as the version: the
