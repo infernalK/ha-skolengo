@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -50,6 +51,8 @@ from .school_life import flatten_absence_file, flatten_schooling_events
 
 _LOGGER = logging.getLogger(__name__)
 
+
+CACHE_STORAGE_VERSION = 1
 
 SOURCE_AGENDA = "agenda"
 SOURCE_HOMEWORK = "homework"
@@ -156,6 +159,10 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # data (flagged as possibly outdated) rather than nothing.
         self._cache: dict[str, object] = {}
         self._last_ok: dict[str, datetime] = {}
+        # Persisted so the last known data also survives a restart of Home
+        # Assistant that happens during an outage.
+        self._store: Store = Store(hass, CACHE_STORAGE_VERSION, f"{DOMAIN}_cache_{entry.entry_id}")
+        self._cache_loaded = False
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -203,7 +210,30 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 self.entry, data={**self.entry.data, CONF_REFRESH_TOKEN: new_token}
             )
 
+    async def _async_load_cache(self) -> None:
+        """Restore the last known data persisted by a previous run."""
+        self._cache_loaded = True
+        stored = await self._store.async_load()
+        if not isinstance(stored, dict):
+            return
+        for source, value in (stored.get("data") or {}).items():
+            if source == SOURCE_EVALUATIONS and isinstance(value, list) and len(value) == 2:
+                value = (value[0], value[1])  # (periods, evaluations), tuple in memory
+            self._cache.setdefault(source, value)
+        for source, iso in (stored.get("last_ok") or {}).items():
+            parsed = dt_util.parse_datetime(iso) if isinstance(iso, str) else None
+            if parsed is not None:
+                self._last_ok.setdefault(source, parsed)
+
+    def _cache_to_store(self) -> dict:
+        return {
+            "data": self._cache,
+            "last_ok": {source: when.isoformat() for source, when in self._last_ok.items()},
+        }
+
     async def _async_update_data(self) -> SkolengoData:
+        if not self._cache_loaded:
+            await self._async_load_cache()
         client = await self._async_ensure_client()
 
         today = dt_util.now().date()
@@ -388,6 +418,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             raise UpdateFailed(str(err)) from err
 
         self._async_persist_refresh_token()
+        self._store.async_delay_save(self._cache_to_store, 30)
         self._async_fire_new_grade_events(data.evaluations)
         self._async_fire_new_homework_events(data.homework)
         # An agenda outage must not look like "every lesson vanished", which

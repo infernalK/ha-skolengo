@@ -7,10 +7,11 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
 
 from .const import CONF_SCAN_INTERVAL, CONF_SCHOOL_ID, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
-from .coordinator import SkolengoDataUpdateCoordinator
+from .coordinator import CACHE_STORAGE_VERSION, SkolengoDataUpdateCoordinator
 from .news import release_news_sensor
 from .news_files import SkolengoNewsFileView
 
@@ -94,6 +95,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the persisted last-known-data cache of a removed entry."""
+    await Store(hass, CACHE_STORAGE_VERSION, f"{DOMAIN}_cache_{entry.entry_id}").async_remove()
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
