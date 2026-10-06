@@ -7,6 +7,7 @@ import os
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_integration
@@ -89,6 +90,47 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         return
 
     hass.data[_FRONTEND_REGISTERED_KEY] = True
+
+    # The extra JS URL above is baked into the frontend's index page, which
+    # the iOS/Android companion apps may keep cached for a long time. A
+    # Lovelace resource is fetched fresh over the websocket every time a
+    # dashboard loads, so also register one (storage mode only). The script
+    # is idempotent (safeDefine), so loading it twice is harmless.
+    async def _register_resource(_event=None) -> None:
+        try:
+            await _async_ensure_lovelace_resource(hass, js_url)
+        except Exception:  # noqa: BLE001 - never break setup over this
+            _LOGGER.debug("Enregistrement de la ressource Lovelace impossible", exc_info=True)
+
+    if hass.is_running:
+        await _register_resource()
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_resource)
+
+
+async def _async_ensure_lovelace_resource(hass: HomeAssistant, js_url: str) -> None:
+    """Create or update the Lovelace resource pointing at the bundled cards."""
+    lovelace = hass.data.get("lovelace")
+    if lovelace is None:
+        return
+    if isinstance(lovelace, dict):  # Home Assistant < 2024.x
+        mode, resources = lovelace.get("mode"), lovelace.get("resources")
+    else:
+        mode = getattr(lovelace, "resource_mode", getattr(lovelace, "mode", None))
+        resources = getattr(lovelace, "resources", None)
+    if mode != "storage" or resources is None or not hasattr(resources, "async_create_item"):
+        return  # YAML mode: the user manages resources by hand
+
+    await resources.async_get_info()  # makes sure the collection is loaded
+    base = f"{STATIC_PATH}/{JS_FILENAME}"
+    for item in resources.async_items():
+        if item["url"].split("?")[0] == base:
+            if item["url"] != js_url or item.get("type") != "module":
+                await resources.async_update_item(
+                    item["id"], {"res_type": "module", "url": js_url}
+                )
+            return
+    await resources.async_create_item({"res_type": "module", "url": js_url})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
