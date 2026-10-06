@@ -1,6 +1,7 @@
 """The Skolengo integration."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from datetime import timedelta
@@ -24,6 +25,15 @@ STATIC_PATH = "/skolengo_static"
 JS_FILENAME = "skolengo-cards.js"
 _FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_registered"
 _VIEW_REGISTERED_KEY = f"{DOMAIN}_news_view_registered"
+
+
+def _file_hash(path: str) -> str:
+    """Short content hash of a file (empty string if unreadable)."""
+    try:
+        with open(path, "rb") as file:
+            return hashlib.sha256(file.read()).hexdigest()[:8]
+    except OSError:
+        return ""
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
@@ -57,7 +67,13 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         hass.http.register_static_path(STATIC_PATH, www_dir, cache_headers=True)
 
     integration = await async_get_integration(hass, DOMAIN)
-    js_url = f"{STATIC_PATH}/{JS_FILENAME}?v={integration.version}"
+    # Cache-bust with the file's content hash as well as the version: the
+    # mobile apps' webviews cache this file very aggressively, and a JS
+    # change shipped without a version bump would otherwise keep serving the
+    # stale copy (cards missing / "custom element doesn't exist") even after
+    # clearing the app cache.
+    js_hash = await hass.async_add_executor_job(_file_hash, os.path.join(www_dir, JS_FILENAME))
+    js_url = f"{STATIC_PATH}/{JS_FILENAME}?v={integration.version}-{js_hash}"
 
     try:
         from homeassistant.components.frontend import add_extra_js_url
