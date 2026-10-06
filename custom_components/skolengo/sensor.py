@@ -11,7 +11,16 @@ from homeassistant.util import dt as dt_util
 
 from .colors import normalize_color
 from .const import CONF_SCHOOL_ID, CONF_SCHOOL_NAME, CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
-from .coordinator import SkolengoDataUpdateCoordinator
+from .coordinator import (
+    SOURCE_ABSENCES,
+    SOURCE_AGENDA,
+    SOURCE_EVALUATIONS,
+    SOURCE_HOMEWORK,
+    SOURCE_NEWS,
+    SOURCE_SCHOOL_LIFE,
+    SOURCE_STUDENT_INFO,
+    SkolengoDataUpdateCoordinator,
+)
 from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework
 from .news import claim_news_sensor
@@ -75,6 +84,23 @@ class SkolengoSensorBase(CoordinatorEntity[SkolengoDataUpdateCoordinator], Senso
     def _lessons(self) -> list[dict]:
         return self.coordinator.data.lessons if self.coordinator.data else []
 
+    # Data source (coordinator SOURCE_* key) this sensor's data comes from.
+    _source: str | None = None
+
+    def _freshness(self) -> dict:
+        """`up_to_date` is False when the last refresh of this sensor's
+        source failed, in which case the sensor shows the last known data;
+        `last_update` is when it was last refreshed successfully. Both are
+        read by the cards to warn that the data may be outdated."""
+        data = self.coordinator.data
+        if data is None or self._source is None:
+            return {}
+        last = data.last_update(self._source)
+        return {
+            "up_to_date": data.is_fresh(self._source),
+            "last_update": last.isoformat() if last else None,
+        }
+
     @property
     def _homework(self) -> list[dict]:
         return self.coordinator.data.homework if self.coordinator.data else []
@@ -111,6 +137,7 @@ class SkolengoStudentClassSensor(SkolengoSensorBase):
     """
 
     _attr_translation_key = "student_class"
+    _source = SOURCE_STUDENT_INFO
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "student_class", "Classe")
@@ -127,6 +154,7 @@ class SkolengoStudentClassSensor(SkolengoSensorBase):
             "date_of_birth": info.get("dateOfBirth"),
             "regime": info.get("regime"),
             "school": school.get("name"),
+            **self._freshness(),
         }
 
 
@@ -134,6 +162,7 @@ class SkolengoNextLessonSensor(SkolengoSensorBase):
     """Next upcoming (non-canceled) lesson."""
 
     _attr_translation_key = "next_lesson"
+    _source = SOURCE_AGENDA
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "next_lesson", "Prochain cours")
@@ -150,12 +179,13 @@ class SkolengoNextLessonSensor(SkolengoSensorBase):
     def extra_state_attributes(self) -> dict:
         lesson = self._next_lesson()
         if not lesson:
-            return {}
+            return self._freshness()
         return {
             "start": lesson.get("startDateTime"),
             "end": lesson.get("endDateTime"),
             "location": lesson.get("location") or lesson.get("room"),
             "canceled": lesson.get("canceled", False),
+            **self._freshness(),
         }
 
     def _next_lesson(self) -> dict | None:
@@ -184,6 +214,7 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "next_alarm"
+    _source = SOURCE_AGENDA
 
     _FR_WEEKDAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 
@@ -198,7 +229,7 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
     def extra_state_attributes(self) -> dict:
         alarm = self.coordinator.data.next_alarm if self.coordinator.data else None
         if not alarm:
-            return {}
+            return self._freshness()
         local = dt_util.as_local(alarm)
         # A dashboard badge/tile showing this entity's `state` renders a
         # relative time by default (device_class: timestamp) -- this
@@ -207,7 +238,10 @@ class SkolengoNextAlarmSensor(SkolengoSensorBase):
         # spelled out by hand (not strftime %A) to avoid depending on the
         # host's locale being set to French.
         weekday = self._FR_WEEKDAYS[local.weekday()]
-        return {"formatted": f"{weekday} {local.strftime('%d/%m à %H:%M')}"}
+        return {
+            "formatted": f"{weekday} {local.strftime('%d/%m à %H:%M')}",
+            **self._freshness(),
+        }
 
 
 def _serialize_lesson(lesson: dict) -> dict:
@@ -253,6 +287,7 @@ class SkolengoTimetableTodaySensor(SkolengoTimetableDaySensorBase):
 
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "timetable_today"
+    _source = SOURCE_AGENDA
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "timetable_today", "Emploi du temps (aujourd'hui)")
@@ -267,6 +302,7 @@ class SkolengoTimetableTodaySensor(SkolengoTimetableDaySensorBase):
         return {
             "day": today.isoformat(),
             "lessons": [_serialize_lesson(lesson) for lesson in self._lessons_for(today)],
+            **self._freshness(),
         }
 
 
@@ -282,6 +318,7 @@ class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
 
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "timetable_next_day"
+    _source = SOURCE_AGENDA
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "timetable_next_day", "Emploi du temps (jour suivant)")
@@ -297,6 +334,7 @@ class SkolengoTimetableNextDaySensor(SkolengoTimetableDaySensorBase):
         return {
             "day": day.isoformat() if day else None,
             "lessons": [_serialize_lesson(lesson) for lesson in lessons],
+            **self._freshness(),
         }
 
     def _chosen_day(self):
@@ -319,6 +357,7 @@ class SkolengoTodayLessonCountSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "cours"
     _attr_translation_key = "today_lesson_count"
+    _source = SOURCE_AGENDA
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "today_lesson_count", "Cours aujourd'hui")
@@ -341,6 +380,7 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "devoirs"
     _attr_translation_key = "homework_due"
+    _source = SOURCE_HOMEWORK
     # `assignments`/`done_assignments` hold full homework payloads (each
     # with a potentially long `html` field) for a whole school year --
     # routinely over recorder's 16 KiB per-attribute limit, which would
@@ -371,6 +411,7 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
         return {
             "assignments": [flatten_homework(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
             "done_assignments": [flatten_homework(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
+            **self._freshness(),
         }
 
 
@@ -387,6 +428,7 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "absences"
     _attr_translation_key = "absences"
+    _source = SOURCE_ABSENCES
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "absences", "Absences")
@@ -400,7 +442,10 @@ class SkolengoAbsencesSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"absences": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
+        return {
+            "absences": [_serialize_absence_file(a) for a in self._filtered()[:30]],
+            **self._freshness(),
+        }
 
 
 class SkolengoDelaysSensor(SkolengoSensorBase):
@@ -408,6 +453,7 @@ class SkolengoDelaysSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "retards"
     _attr_translation_key = "delays"
+    _source = SOURCE_ABSENCES
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "delays", "Retards")
@@ -421,7 +467,10 @@ class SkolengoDelaysSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"delays": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
+        return {
+            "delays": [_serialize_absence_file(a) for a in self._filtered()[:30]],
+            **self._freshness(),
+        }
 
 
 class SkolengoExemptionsSensor(SkolengoSensorBase):
@@ -429,6 +478,7 @@ class SkolengoExemptionsSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "dispenses"
     _attr_translation_key = "exemptions"
+    _source = SOURCE_ABSENCES
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -443,7 +493,10 @@ class SkolengoExemptionsSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"exemptions": [_serialize_absence_file(a) for a in self._filtered()[:30]]}
+        return {
+            "exemptions": [_serialize_absence_file(a) for a in self._filtered()[:30]],
+            **self._freshness(),
+        }
 
 
 class SkolengoObservationsSensor(SkolengoSensorBase):
@@ -451,6 +504,7 @@ class SkolengoObservationsSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "observations"
     _attr_translation_key = "observations"
+    _source = SOURCE_SCHOOL_LIFE
     _unrecorded_attributes = frozenset({"observations"})
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -470,6 +524,7 @@ class SkolengoObservationsSensor(SkolengoSensorBase):
             "positive": life.get("positive"),
             "negative": life.get("negative"),
             "observations": (life.get("observations") or [])[:30],
+            **self._freshness(),
         }
 
 
@@ -478,6 +533,7 @@ class SkolengoPunishmentsSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "punitions"
     _attr_translation_key = "punishments"
+    _source = SOURCE_SCHOOL_LIFE
     _unrecorded_attributes = frozenset({"punishments"})
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -496,6 +552,7 @@ class SkolengoPunishmentsSensor(SkolengoSensorBase):
         return {
             "to_realize": life.get("punishments_to_realize"),
             "punishments": (life.get("punishments") or [])[:30],
+            **self._freshness(),
         }
 
 
@@ -503,6 +560,7 @@ class SkolengoNewsSensor(SkolengoSensorBase):
     """Latest school news ("actualités"); the full list is in `news`."""
 
     _attr_translation_key = "news"
+    _source = SOURCE_NEWS
     _unrecorded_attributes = frozenset({"news"})
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
@@ -544,7 +602,7 @@ class SkolengoNewsSensor(SkolengoSensorBase):
             }
             for n in self._news[:10]
         ]
-        return {"count": len(self._news), "news": news}
+        return {"count": len(self._news), "news": news, **self._freshness()}
 
 
 def _average_mark(items: list[dict]) -> float | None:
@@ -630,6 +688,7 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
 
     _attr_native_unit_of_measurement = "notes"
     _attr_translation_key = "evaluations"
+    _source = SOURCE_EVALUATIONS
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "evaluations", "Notes")
@@ -664,6 +723,7 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
             "average": official if official is not None else _average_mark(items),
             "periods": _periods_meta(self._periods),
             "evaluations_by_period": by_period,
+            **self._freshness(),
         }
 
 
@@ -753,6 +813,7 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
     """
 
     _attr_translation_key = "average_grade"
+    _source = SOURCE_EVALUATIONS
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "average_grade", "Moyenne générale")
@@ -777,4 +838,5 @@ class SkolengoAverageGradeSensor(SkolengoSensorBase):
             "by_subject": _subject_averages(self._evaluations),
             "periods": _periods_meta(self._periods),
             "average_by_period": by_period,
+            **self._freshness(),
         }

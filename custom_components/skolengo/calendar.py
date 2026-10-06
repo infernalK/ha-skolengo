@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_STUDENT_ID, CONF_STUDENT_NAME, DOMAIN, MANUFACTURER
-from .coordinator import SkolengoDataUpdateCoordinator
+from .coordinator import SOURCE_AGENDA, SOURCE_HOMEWORK, SkolengoDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -96,8 +96,27 @@ def _lesson_description(lesson: dict) -> str:
     return "\n".join(parts)
 
 
+class _FreshnessMixin:
+    """Exposes whether the last refresh of this calendar's data source
+    worked (`up_to_date`) and when it last did (`last_update`). On failure
+    the calendar keeps showing the last known events."""
+
+    _source: str
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.data  # type: ignore[attr-defined]
+        if data is None:
+            return {}
+        last = data.last_update(self._source)
+        return {
+            "up_to_date": data.is_fresh(self._source),
+            "last_update": last.isoformat() if last else None,
+        }
+
+
 class SkolengoTimetableCalendar(
-    CoordinatorEntity[SkolengoDataUpdateCoordinator], CalendarEntity
+    _FreshnessMixin, CoordinatorEntity[SkolengoDataUpdateCoordinator], CalendarEntity
 ):
     """Calendar entity exposing the student's timetable."""
 
@@ -110,6 +129,8 @@ class SkolengoTimetableCalendar(
         self._attr_unique_id = f"{entry.entry_id}_timetable"
         self._attr_device_info = _device_info(entry)
         self._attr_name = "Emploi du temps"
+
+    _source = SOURCE_AGENDA
 
     @property
     def event(self) -> CalendarEvent | None:
@@ -147,12 +168,13 @@ class SkolengoTimetableCalendar(
 
 
 class SkolengoHomeworkCalendar(
-    CoordinatorEntity[SkolengoDataUpdateCoordinator], CalendarEntity
+    _FreshnessMixin, CoordinatorEntity[SkolengoDataUpdateCoordinator], CalendarEntity
 ):
     """Calendar entity exposing homework due dates as all-day events."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "homework"
+    _source = SOURCE_HOMEWORK
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)

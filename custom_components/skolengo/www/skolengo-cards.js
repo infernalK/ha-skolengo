@@ -153,6 +153,22 @@
       font-style: italic;
       padding: 8px 0;
     }
+    .skolengo-alert {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border-left: 4px solid var(--error-color, #db4437);
+      border-radius: 4px;
+      background: var(--secondary-background-color, rgba(0,0,0,0.03));
+      color: var(--primary-text-color);
+      margin-bottom: 12px;
+    }
+    .skolengo-alert-detail {
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+      margin-top: 2px;
+    }
     .skolengo-list {
       display: flex;
       flex-direction: column;
@@ -302,6 +318,24 @@
     return `<style>${BASE_STYLE}</style><div class="skolengo-card">${bodyHtml}</div>`;
   }
 
+  // Warning shown above a card when the integration couldn't refresh its
+  // data: the card then shows the last known data, so say it may be
+  // outdated and since when. Driven by the `up_to_date` / `last_update`
+  // attributes every Skolengo sensor exposes.
+  function outdatedAlert(attrs, config) {
+    if (!attrs || attrs.up_to_date !== false) return "";
+    if (config && config.display_outdated_alert === false) return "";
+    const label = parseDate(attrs.last_update)
+      ? `Dernière mise à jour réussie : ${formatDateShort(attrs.last_update)} ${formatTime(attrs.last_update)}`
+      : "Aucune mise à jour réussie depuis le démarrage";
+    return `<div class="skolengo-alert">
+      <div>
+        <div>⚠️ Données peut-être pas à jour</div>
+        <div class="skolengo-alert-detail">${escapeHtml(label)}</div>
+      </div>
+    </div>`;
+  }
+
   // Shared period selector (used by the "Notes" and "Moyennes" cards): a
   // row of chips ("Total" + one per period from the `periods` attribute).
   // Selection is kept in the calling card's own instance state (not this
@@ -378,6 +412,7 @@
     display_classroom: "Afficher la salle",
     dim_ended_lessons: "Estomper les cours terminés",
     display_day_hours: "Afficher les horaires",
+    display_outdated_alert: "Alerter si les données ne sont pas à jour",
     display_done_homework: "Afficher les devoirs déjà faits",
     reduce_done_homework: "Réduire l'affichage des devoirs faits",
     max_items: "Nombre maximum d'éléments",
@@ -460,6 +495,7 @@
       }
       this._config = {
         display_header: true,
+        display_outdated_alert: true,
         display_teacher: true,
         display_classroom: true,
         dim_ended_lessons: true,
@@ -509,8 +545,9 @@
         </div>`;
       }
 
+
       if (!lessons.length) {
-        html += `<div class="skolengo-empty">Aucun cours prévu</div>`;
+        html += `<div class="skolengo-empty">${attrs.up_to_date === false ? "Aucun cours connu" : "Aucun cours prévu"}</div>`;
       } else {
         const now = new Date();
         html += '<div class="skolengo-list">';
@@ -555,7 +592,7 @@
         html += "</div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
     }
 
     static getConfigElement() {
@@ -572,7 +609,7 @@
     createConfigEditor(
       [
         TITLE_FIELD,
-        boolField("display_header"),
+        boolField("display_header"), boolField("display_outdated_alert"),
         boolField("display_teacher"),
         boolField("display_classroom"),
         boolField("dim_ended_lessons"),
@@ -593,6 +630,7 @@
       }
       this._config = {
         display_header: true,
+        display_outdated_alert: true,
         display_done_homework: false,
         reduce_done_homework: true,
         max_items: 20,
@@ -683,7 +721,7 @@
         html += "</div></div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
     }
 
     static getConfigElement() {
@@ -700,7 +738,7 @@
     createConfigEditor(
       [
         TITLE_FIELD,
-        boolField("display_header"),
+        boolField("display_header"), boolField("display_outdated_alert"),
         boolField("display_done_homework"),
         boolField("reduce_done_homework"),
         MAX_ITEMS_FIELD,
@@ -721,6 +759,7 @@
       this._config = {
         title: "Notes",
         display_header: true,
+        display_outdated_alert: true,
         display_date: true,
         display_coefficient: true,
         display_class_average: true,
@@ -852,7 +891,7 @@
         html += "</div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
       bindPeriodSelector(this.shadowRoot, (periodId) => {
         this._selectedPeriodId = periodId;
         this._render();
@@ -873,7 +912,7 @@
     createConfigEditor(
       [
         TITLE_FIELD,
-        boolField("display_header"),
+        boolField("display_header"), boolField("display_outdated_alert"),
         boolField("display_date"),
         boolField("display_coefficient"),
         boolField("display_class_average"),
@@ -920,6 +959,7 @@
       this._config = {
         title: "Compétences",
         display_header: true,
+        display_outdated_alert: true,
         display_date: true,
         display_teacher: false,
         max_items: 15,
@@ -1029,7 +1069,7 @@
         html += "</div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
       bindPeriodSelector(this.shadowRoot, (periodId) => {
         this._selectedPeriodId = periodId;
         this._render();
@@ -1048,7 +1088,7 @@
   safeDefine(
     "skolengo-competencies-card-editor",
     createConfigEditor(
-      [TITLE_FIELD, boolField("display_header"), boolField("display_date"), boolField("display_teacher"), MAX_ITEMS_FIELD],
+      [TITLE_FIELD, boolField("display_header"), boolField("display_outdated_alert"), boolField("display_date"), boolField("display_teacher"), MAX_ITEMS_FIELD],
       "evaluations"
     )
   );
@@ -1065,6 +1105,7 @@
       this._config = {
         title: "Moyennes",
         display_header: true,
+        display_outdated_alert: true,
         display_class_average: true,
         ...config,
       };
@@ -1156,7 +1197,7 @@
         html += "</div>";
       }
 
-      this.shadowRoot.innerHTML = cardWrapper(html);
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
       bindPeriodSelector(this.shadowRoot, (periodId) => {
         this._selectedPeriodId = periodId;
         this._render();
@@ -1174,7 +1215,7 @@
   safeDefine("skolengo-averages-card", SkolengoAveragesCard);
   safeDefine(
     "skolengo-averages-card-editor",
-    createConfigEditor([TITLE_FIELD, boolField("display_header"), boolField("display_class_average")], "by_subject")
+    createConfigEditor([TITLE_FIELD, boolField("display_header"), boolField("display_outdated_alert"), boolField("display_class_average")], "by_subject")
   );
 
   // ---------------------------------------------------------------------
@@ -1268,6 +1309,7 @@
       }
       this._config = {
         display_header: true,
+        display_outdated_alert: true,
         display_comment: true,
         max_items: 20,
         ...config,
@@ -1417,7 +1459,7 @@
         html += "</div>";
       }
 
-      this._setHtml(cardWrapper(html));
+      this._setHtml(cardWrapper(outdatedAlert(attrs, this._config) + html));
     }
 
     static getConfigElement() {
@@ -1432,7 +1474,7 @@
 
   const VIE_SCOLAIRE_EDITOR_FIELDS = [
     TITLE_FIELD,
-    boolField("display_header"),
+    boolField("display_header"), boolField("display_outdated_alert"),
     boolField("display_comment"),
     MAX_ITEMS_FIELD,
   ];

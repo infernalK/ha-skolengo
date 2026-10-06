@@ -51,6 +51,24 @@ from .school_life import flatten_absence_file, flatten_schooling_events
 _LOGGER = logging.getLogger(__name__)
 
 
+SOURCE_AGENDA = "agenda"
+SOURCE_HOMEWORK = "homework"
+SOURCE_ABSENCES = "absences"
+SOURCE_SCHOOL_LIFE = "school_life"
+SOURCE_NEWS = "news"
+SOURCE_EVALUATIONS = "evaluations"
+SOURCE_STUDENT_INFO = "student_info"
+
+
+@dataclass
+class SourceFreshness:
+    """State of one data source after an update."""
+
+    ok: bool = True
+    # Last successful refresh (None: never since startup).
+    last_update: datetime | None = None
+
+
 @dataclass
 class SkolengoData:
     """Container for all data pulled for one student."""
@@ -68,6 +86,18 @@ class SkolengoData:
     student_name: str = ""
     next_alarm: datetime | None = None
     student_info: dict = field(default_factory=dict)
+    # Per data source (see SOURCE_* keys): whether the last refresh worked.
+    # When it didn't, the matching field above holds the last known data
+    # (possibly outdated), and `last_update` says how old it is.
+    freshness: dict[str, SourceFreshness] = field(default_factory=dict)
+
+    def is_fresh(self, source: str) -> bool:
+        status = self.freshness.get(source)
+        return status.ok if status else True
+
+    def last_update(self, source: str) -> datetime | None:
+        status = self.freshness.get(source)
+        return status.last_update if status else None
 
 
 class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
@@ -121,6 +151,11 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # going to be there, which would otherwise fire `lesson_added` for
         # every single lesson, once, as it crosses the window's edge.
         self._known_agenda_end: date | None = None
+        # Last successfully fetched value of each data source and when, served
+        # while that source fails so entities keep showing the latest known
+        # data (flagged as possibly outdated) rather than nothing.
+        self._cache: dict[str, object] = {}
+        self._last_ok: dict[str, datetime] = {}
 
     async def _async_ensure_client(self) -> SkolengoClient:
         if self.client is not None:
@@ -186,19 +221,38 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         homework_end = agenda_end
 
         def _fetch() -> SkolengoData:
+            freshness: dict[str, SourceFreshness] = {}
+
+            def _resolve(source: str, ok: bool, value):
+                """The fresh `value` if `ok`, else the last known one (the
+                partial/empty `value` only when nothing was ever fetched)."""
+                if ok:
+                    self._cache[source] = value
+                    self._last_ok[source] = dt_util.utcnow()
+                elif source in self._cache:
+                    value = self._cache[source]
+                freshness[source] = SourceFreshness(ok, self._last_ok.get(source))
+                return value
+
             lessons: list[dict] = []
+            agenda_ok = False
             try:
                 agendas = client.get_agenda(self.student_id, agenda_start, agenda_end)
                 for day in agendas:
                     lessons.extend(day.get("lessons") or [])
+                agenda_ok = True
             except SkolengoApiError as err:
-                _LOGGER.warning("Unable to fetch agenda: %s", err)
+                _LOGGER.warning("Unable to fetch agenda (keeping last known timetable): %s", err)
+            lessons = _resolve(SOURCE_AGENDA, agenda_ok, lessons)
 
             homework: list[dict] = []
+            homework_ok = False
             try:
                 homework = client.get_homework(self.student_id, homework_start, homework_end)
+                homework_ok = True
             except SkolengoApiError as err:
                 _LOGGER.warning("Unable to fetch homework: %s", err)
+            homework = _resolve(SOURCE_HOMEWORK, homework_ok, homework)
 
             absences: list[dict] = []
             absences_fetched = False
@@ -209,14 +263,19 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 # Known to 500 on some schools due to a server-side bug in
                 # Skolengo's own API (not something we can fix); never fatal.
                 _LOGGER.debug("Unable to fetch absences (non-fatal): %s", err)
+            absences = _resolve(SOURCE_ABSENCES, absences_fetched, absences)
 
             school_life: dict = {}
+            school_life_ok = False
             try:
                 school_life = flatten_schooling_events(client.get_schooling_events(self.student_id))
+                school_life_ok = True
             except SkolengoApiError as err:
                 _LOGGER.debug("Unable to fetch observations/punishments (non-fatal): %s", err)
+            school_life = _resolve(SOURCE_SCHOOL_LIFE, school_life_ok, school_life)
 
             news: list[dict] = []
+            news_ok = False
             try:
                 raw_news = client.get_school_news()
                 for raw in raw_news[:NEWS_ATTACHMENT_FETCH_LIMIT]:
@@ -229,11 +288,14 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                             continue
                     raw["attachments"] = self._news_attachments[news_id]
                 news = flatten_school_news(raw_news)
+                news_ok = True
             except SkolengoApiError as err:
                 _LOGGER.debug("Unable to fetch school news (non-fatal): %s", err)
+            news = _resolve(SOURCE_NEWS, news_ok, news)
 
             periods: list[dict] = []
             level_labels: dict[str, str] = {}
+            evaluations_ok = True
             try:
                 settings = client.get_evaluations_settings(self.student_id)
                 periods = (settings[0].get("periods") or []) if settings else []
@@ -250,6 +312,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                         level_labels[level_code] = label
             except SkolengoApiError as err:
                 # Known to be flaky/unsupported on some schools; never fatal.
+                evaluations_ok = False
                 _LOGGER.debug("Unable to fetch evaluation periods (non-fatal): %s", err)
 
             evaluations: list[dict] = []
@@ -263,6 +326,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                     try:
                         period_evaluations = client.get_evaluations(self.student_id, period_id)
                     except SkolengoApiError as err:
+                        evaluations_ok = False
                         _LOGGER.debug(
                             "Unable to fetch evaluations for period %s (non-fatal): %s",
                             period_id,
@@ -278,19 +342,28 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 try:
                     evaluations = client.get_evaluations(self.student_id)
                 except SkolengoApiError as err:
+                    evaluations_ok = False
                     _LOGGER.debug("Unable to fetch evaluations (non-fatal): %s", err)
 
             apply_skill_level_labels(evaluations, level_labels)
+            # Periods and evaluations go together: a partial refresh is
+            # replaced as a whole by the last complete one.
+            periods, evaluations = _resolve(
+                SOURCE_EVALUATIONS, evaluations_ok, (periods, evaluations)
+            )
 
             alarm_offset = self.entry.options.get(CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET)
             next_alarm = _compute_next_alarm(lessons, alarm_offset)
 
             student_info: dict = {}
+            student_info_ok = False
             try:
                 user_info = client.get_user_info(self.user_id)
                 student_info = _find_student_info(user_info, self.student_id)
+                student_info_ok = True
             except SkolengoApiError as err:
                 _LOGGER.debug("Unable to fetch student info (non-fatal): %s", err)
+            student_info = _resolve(SOURCE_STUDENT_INFO, student_info_ok, student_info)
 
             return SkolengoData(
                 lessons=lessons,
@@ -303,6 +376,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 periods=periods,
                 next_alarm=next_alarm,
                 student_info=student_info,
+                freshness=freshness,
             )
 
         try:
@@ -316,7 +390,10 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._async_persist_refresh_token()
         self._async_fire_new_grade_events(data.evaluations)
         self._async_fire_new_homework_events(data.homework)
-        self._async_fire_lesson_change_events(data.lessons, agenda_end)
+        # An agenda outage must not look like "every lesson vanished", which
+        # would fire spurious events once the agenda comes back.
+        if data.is_fresh(SOURCE_AGENDA):
+            self._async_fire_lesson_change_events(data.lessons, agenda_end)
         self._async_fire_school_life_events(data)
         self._async_fire_news_events(data.news)
         return data
