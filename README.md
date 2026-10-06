@@ -63,6 +63,7 @@ Depuis la page de l'intégration, le bouton **Configurer** permet d'ajuster l'in
 
 - **Connexion** : Skolengo ne propose pas de mécanisme de connexion générique documenté. L'authentification implémentée ici "scrape" (analyse) génériquement la page de connexion CAS/SSO de votre établissement (recherche des champs identifiant/mot de passe usuels). Cette approche fonctionne pour de nombreux établissements, mais certains ENT régionaux utilisent des parcours de connexion multi-étapes ou non standards qui ne seront pas reconnus automatiquement. Si la connexion échoue avec une erreur "Identifiants incorrects ou formulaire de connexion non pris en charge", merci d'ouvrir une [issue GitHub](https://github.com/infernalK/ha-skolengo/issues) en décrivant votre établissement (sans jamais partager vos identifiants ni mot de passe).
 - **Notes et absences** : les endpoints évaluations/notes et absences sont connus pour être instables ou indisponibles selon les établissements dans l'API Skolengo elle-même (pas seulement dans cette intégration) — par exemple `/absence-files` renvoie une erreur 500 côté serveur lorsqu'on l'interroge sans filtre de type ; l'intégration l'interroge donc un type à la fois (absence, retard, dispense, départ) pour contourner ce bug. Les capteurs correspondants peuvent donc rester à `inconnu` pour votre établissement — ce n'est pas nécessairement un bug de l'intégration.
+- **Panne temporaire de l'API** : quand une requête échoue (par exemple `/agendas` qui répond 500), l'intégration ne vide pas les capteurs et calendriers : elle continue d'afficher les **dernières données connues**, enregistrées sur disque (elles survivent donc à un redémarrage de Home Assistant). Chaque capteur et chaque calendrier expose deux attributs : `up_to_date` (`false` si le dernier rafraîchissement a échoué) et `last_update` (date et heure du dernier rafraîchissement réussi). Toutes les cartes affichent alors en haut un bandeau « ⚠️ Données peut-être pas à jour » avec cette heure ; l'option `display_outdated_alert: false` le masque. Aucun événement (`new_grade`, `lesson_canceled`…) n'est déclenché à partir de données gardées en cache. Tant qu'aucune récupération n'a jamais réussi, les entités restent vides. Pour une automatisation : `{{ is_state_attr('sensor.…', 'up_to_date', false) }}`.
 - Cette intégration ne propose pas d'envoi de notifications ni de liste de tâches (todo) : elle se concentre sur l'exposition des données via calendriers, capteurs et les cartes Lovelace décrites ci-dessous, que vous pouvez ensuite combiner librement avec vos propres automatisations et cartes standard de Home Assistant.
 
 ## Cartes Lovelace intégrées
@@ -86,6 +87,7 @@ type: custom:skolengo-timetable-card
 entity: sensor.skolengo_..._timetable_next_day
 display_teacher: true
 dim_ended_lessons: true
+display_outdated_alert: true  # bandeau « données peut-être pas à jour » (défaut : true)
 ```
 
 ### `skolengo-homework-card`
