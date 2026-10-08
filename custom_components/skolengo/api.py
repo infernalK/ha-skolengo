@@ -178,6 +178,9 @@ class SkolengoClient:
         self.tokens = tokens
         self._session = session or requests.Session()
         self._session.headers.update({"User-Agent": USER_AGENT})
+        # Days /agendas refused (500) during the last get_agenda call.
+        self.agenda_skipped: list[str] = []
+        self._bisect_budget = 0
 
     # ------------------------------------------------------------------
     # School lookup
@@ -800,6 +803,7 @@ class SkolengoClient:
         return jsonapi_deserialize(doc)
 
     def get_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+        self.agenda_skipped = []
         return self._get_agenda_paginated(
             student_id,
             start,
@@ -823,19 +827,50 @@ class SkolengoClient:
         # concatenate the results.
         chunk_days = 15
         days: list[dict[str, Any]] = []
+        skipped_before = len(self.agenda_skipped)
+        # Cap the extra requests spent isolating bad days, so a full outage
+        # (everything 500s) costs a handful of calls, not one per day.
+        self._bisect_budget = 40
         chunk_start = start
         while chunk_start <= end:
             chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), end)
-            params = {
-                "filter[student.id]": student_id,
-                "filter[date][GE]": chunk_start.isoformat(),
-                "filter[date][LE]": chunk_end.isoformat(),
-                "include": include,
-            }
-            doc = self._request("GET", "/agendas", params=params)
-            days.extend(jsonapi_deserialize(doc) or [])
+            days.extend(self._get_agenda_range(student_id, chunk_start, chunk_end, include))
             chunk_start = chunk_end + timedelta(days=1)
+        if len(self.agenda_skipped) > skipped_before and not days:
+            # Nothing at all came back: a real failure, not a bad day.
+            raise SkolengoApiError(
+                f"Skolengo API error 500 on /agendas for every day from "
+                f"{start} to {end} (first: {self.agenda_skipped[skipped_before]})"
+            )
         return days
+
+    def _get_agenda_range(
+        self, student_id: str, start: date, end: date, include: str
+    ) -> list[dict[str, Any]]:
+        """One /agendas request; if it 500s, bisect the range so that a single
+        bad day on Skolengo's side only loses that day, not the whole year."""
+        params = {
+            "filter[student.id]": student_id,
+            "filter[date][GE]": start.isoformat(),
+            "filter[date][LE]": end.isoformat(),
+            "include": include,
+        }
+        try:
+            doc = self._request("GET", "/agendas", params=params)
+            return jsonapi_deserialize(doc) or []
+        except SkolengoApiError as err:
+            if "Skolengo API error 500" not in str(err) or self._bisect_budget <= 0:
+                raise
+            self._bisect_budget -= 1
+            if start == end:
+                _LOGGER.warning("Skolengo /agendas fails (500) for %s alone; skipping that day", start)
+                self.agenda_skipped.append(start.isoformat())
+                return []
+            mid = start + (end - start) // 2
+            _LOGGER.debug("Skolengo /agendas 500 for %s..%s; bisecting", start, end)
+            return self._get_agenda_range(
+                student_id, start, mid, include
+            ) + self._get_agenda_range(student_id, mid + timedelta(days=1), end, include)
 
     def get_homework(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
         # /homework-assignments rejects any request spanning more than 100

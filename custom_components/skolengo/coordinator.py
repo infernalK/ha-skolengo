@@ -162,6 +162,8 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # Sources currently failing, so a lasting server-side outage is
         # warned about once rather than on every poll.
         self._failing: set[str] = set()
+        # Days Skolengo's /agendas refused (500) on the last agenda fetch.
+        self.agenda_skipped: list[str] = []
         # Persisted so the last known data also survives a restart of Home
         # Assistant that happens during an outage.
         self._store: Store = Store(hass, CACHE_STORAGE_VERSION, f"{DOMAIN}_cache_{entry.entry_id}")
@@ -286,6 +288,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 for day in agendas:
                     lessons.extend(day.get("lessons") or [])
                 agenda_ok = True
+                self.agenda_skipped = list(client.agenda_skipped)
             except SkolengoApiError as err:
                 self._log_failure(
                     SOURCE_AGENDA, "agenda (keeping last known timetable)", err
