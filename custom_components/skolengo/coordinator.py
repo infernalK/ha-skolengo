@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -257,6 +258,13 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             if agenda_days_future
             else _end_of_school_year(today)
         )
+        if not agenda_days_future:
+            # Skolengo's /agendas can 500 on the holidays after the last
+            # period, so stop at the last period's end when we know it (from
+            # the previous update or the persisted cache).
+            last_period_end = _last_period_end(self._cache.get(SOURCE_EVALUATIONS))
+            if last_period_end and today <= last_period_end < agenda_end:
+                agenda_end = last_period_end
         # Same lower bound for both the timetable and the homework due-date
         # window, so neither misses anything since the school year began.
         school_year_start = _start_of_school_year(today)
@@ -670,6 +678,21 @@ def _end_of_school_year(today: date) -> date:
     if today <= end_this_year:
         return end_this_year
     return date(today.year + 1, SCHOOL_YEAR_END_MONTH, SCHOOL_YEAR_END_DAY)
+
+
+def _last_period_end(cached: Any) -> date | None:
+    """Local date of the latest evaluation period end in the cached
+    `(periods, evaluations)`, or None if unknown."""
+    try:
+        periods = cached[0]
+    except (TypeError, IndexError, KeyError):
+        return None
+    ends = []
+    for period in periods or []:
+        parsed = dt_util.parse_datetime(str(period.get("endDate") or ""))
+        if parsed is not None:
+            ends.append(dt_util.as_local(parsed).date())
+    return max(ends) if ends else None
 
 
 def _start_of_school_year(today: date) -> date:

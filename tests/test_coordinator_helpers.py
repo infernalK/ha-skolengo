@@ -7,6 +7,7 @@ from custom_components.skolengo.coordinator import (
     _compute_next_alarm,
     _find_student_info,
     _is_lesson_addition_genuine,
+    _last_period_end,
     _lesson_snapshot,
 )
 from custom_components.skolengo.const import (
@@ -205,3 +206,22 @@ def test_addition_is_genuine_when_inside_the_previous_window():
 
 def test_addition_is_not_genuine_without_a_parseable_date():
     assert _is_lesson_addition_genuine({}, date(2026, 9, 25)) is False
+
+
+# --- _last_period_end ------------------------------------------------------
+
+
+def test_last_period_end_is_the_latest_period_end_as_a_local_date():
+    periods = [
+        {"endDate": "2026-11-29T22:59:59.999Z"},
+        {"endDate": "2027-07-12T21:59:59.999Z"},
+        {"endDate": "2027-03-07T22:59:59.999Z"},
+    ]
+    # 21:59Z on the 12th is 23:59 in Paris: still the 12th.
+    assert _last_period_end((periods, [])) == date(2027, 7, 12)
+
+
+def test_last_period_end_is_none_when_unknown():
+    assert _last_period_end(None) is None
+    assert _last_period_end(([], [])) is None
+    assert _last_period_end(([{"endDate": None}], [])) is None
