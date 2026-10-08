@@ -859,8 +859,13 @@ class SkolengoClient:
             doc = self._request("GET", "/agendas", params=params)
             return jsonapi_deserialize(doc) or []
         except SkolengoApiError as err:
-            if "Skolengo API error 500" not in str(err) or self._bisect_budget <= 0:
+            if "Skolengo API error 500" not in str(err):
                 raise
+            if self._bisect_budget <= 0:
+                # Out of isolation budget (e.g. the whole summer holiday 500s):
+                # drop this range but keep what the other ranges returned.
+                self.agenda_skipped.append(f"{start}..{end}")
+                return []
             self._bisect_budget -= 1
             if start == end:
                 _LOGGER.warning("Skolengo /agendas fails (500) for %s alone; skipping that day", start)
