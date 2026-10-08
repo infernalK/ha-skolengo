@@ -306,7 +306,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             homework: list[dict] = []
             homework_ok = False
             try:
-                homework = client.get_homework(self.student_id, homework_start, homework_end)
+                homework = client.get_homework(
+                    self.student_id, homework_start, homework_end, not_before=school_year_start
+                )
                 homework_ok = True
             except SkolengoApiError as err:
                 self._log_failure(SOURCE_HOMEWORK, "homework (keeping last known)", err)
