@@ -33,6 +33,7 @@ async def async_get_config_entry_diagnostics(
         "entry_data": async_redact_data(dict(entry.data), TO_REDACT_ENTRY),
         "entry_options": dict(entry.options),
         "last_update_success": coordinator.last_update_success,
+        "agenda_skipped_days": coordinator.agenda_skipped,
         "freshness": {
             source: {
                 "ok": status.ok,
