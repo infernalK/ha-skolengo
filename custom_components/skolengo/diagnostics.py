@@ -32,6 +32,14 @@ async def async_get_config_entry_diagnostics(
     return {
         "entry_data": async_redact_data(dict(entry.data), TO_REDACT_ENTRY),
         "entry_options": dict(entry.options),
+        "last_update_success": coordinator.last_update_success,
+        "freshness": {
+            source: {
+                "ok": status.ok,
+                "last_update": status.last_update.isoformat() if status.last_update else None,
+            }
+            for source, status in (data.freshness if data else {}).items()
+        },
         "coordinator_data": async_redact_data(
             {
                 "lessons": data.lessons,
