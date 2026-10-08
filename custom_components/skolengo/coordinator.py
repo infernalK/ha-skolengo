@@ -159,6 +159,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         # data (flagged as possibly outdated) rather than nothing.
         self._cache: dict[str, object] = {}
         self._last_ok: dict[str, datetime] = {}
+        # Sources currently failing, so a lasting server-side outage is
+        # warned about once rather than on every poll.
+        self._failing: set[str] = set()
         # Persisted so the last known data also survives a restart of Home
         # Assistant that happens during an outage.
         self._store: Store = Store(hass, CACHE_STORAGE_VERSION, f"{DOMAIN}_cache_{entry.entry_id}")
@@ -225,6 +228,15 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             if parsed is not None:
                 self._last_ok.setdefault(source, parsed)
 
+    def _log_failure(self, source: str, what: str, err: Exception) -> None:
+        """Warn on the first failure of `source`, then stay at debug level
+        until it recovers (a Skolengo 500 can last for hours)."""
+        if source in self._failing:
+            _LOGGER.debug("Unable to fetch %s: %s", what, err)
+        else:
+            self._failing.add(source)
+            _LOGGER.warning("Unable to fetch %s: %s", what, err)
+
     def _cache_to_store(self) -> dict:
         return {
             "data": self._cache,
@@ -257,6 +269,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 """The fresh `value` if `ok`, else the last known one (the
                 partial/empty `value` only when nothing was ever fetched)."""
                 if ok:
+                    if source in self._failing:
+                        self._failing.discard(source)
+                        _LOGGER.info("Skolengo %s is available again", source)
                     self._cache[source] = value
                     self._last_ok[source] = dt_util.utcnow()
                 elif source in self._cache:
@@ -272,7 +287,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                     lessons.extend(day.get("lessons") or [])
                 agenda_ok = True
             except SkolengoApiError as err:
-                _LOGGER.warning("Unable to fetch agenda (keeping last known timetable): %s", err)
+                self._log_failure(
+                    SOURCE_AGENDA, "agenda (keeping last known timetable)", err
+                )
             lessons = _resolve(SOURCE_AGENDA, agenda_ok, lessons)
 
             homework: list[dict] = []
@@ -281,7 +298,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                 homework = client.get_homework(self.student_id, homework_start, homework_end)
                 homework_ok = True
             except SkolengoApiError as err:
-                _LOGGER.warning("Unable to fetch homework: %s", err)
+                self._log_failure(SOURCE_HOMEWORK, "homework (keeping last known)", err)
             homework = _resolve(SOURCE_HOMEWORK, homework_ok, homework)
 
             absences: list[dict] = []
