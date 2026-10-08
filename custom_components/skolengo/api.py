@@ -877,7 +877,9 @@ class SkolengoClient:
                 student_id, start, mid, include
             ) + self._get_agenda_range(student_id, mid + timedelta(days=1), end, include)
 
-    def get_homework(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+    def get_homework(
+        self, student_id: str, start: date, end: date, not_before: date | None = None
+    ) -> list[dict[str, Any]]:
         # /homework-assignments rejects any request spanning more than 100
         # days ("the maximum duration for the search period is 100 days"),
         # unlike /agendas which silently truncates instead -- so unlike
@@ -889,11 +891,15 @@ class SkolengoClient:
         chunk_start = start
         while chunk_start <= end:
             chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), end)
-            homework.extend(self._get_homework_chunk(student_id, chunk_start, chunk_end))
+            homework.extend(
+                self._get_homework_chunk(student_id, chunk_start, chunk_end, not_before)
+            )
             chunk_start = chunk_end + timedelta(days=1)
         return homework
 
-    def _get_homework_chunk(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+    def _get_homework_chunk(
+        self, student_id: str, start: date, end: date, not_before: date | None = None
+    ) -> list[dict[str, Any]]:
         params = {
             "filter[student.id]": student_id,
             "filter[dueDate][GE]": start.isoformat(),
@@ -917,9 +923,11 @@ class SkolengoClient:
                 "Homework endpoint returned a 500 (likely the Skolengo "
                 "no-due-date server bug); falling back to agenda-embedded homework"
             )
-            return self._get_homework_via_agenda(student_id, start, end)
+            return self._get_homework_via_agenda(student_id, start, end, not_before)
 
-    def _get_homework_via_agenda(self, student_id: str, start: date, end: date) -> list[dict[str, Any]]:
+    def _get_homework_via_agenda(
+        self, student_id: str, start: date, end: date, not_before: date | None = None
+    ) -> list[dict[str, Any]]:
         # homeworkAssignments are embedded under the agenda day they were
         # *assigned* on, not their due date, so an assignment given out
         # before `start` but due within [start, end] would otherwise be
@@ -927,6 +935,9 @@ class SkolengoClient:
         # assignment's own dueDate to match what the primary endpoint would
         # have returned.
         agenda_start = start - timedelta(days=HOMEWORK_AGENDA_LOOKBACK_DAYS)
+        if not_before is not None:
+            # e.g. the start of the school year: nothing is assigned before it.
+            agenda_start = max(agenda_start, not_before)
         days = self._get_agenda_paginated(
             student_id, agenda_start, end, "homeworkAssignments,homeworkAssignments.subject"
         )
