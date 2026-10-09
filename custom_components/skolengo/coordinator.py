@@ -611,15 +611,20 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                         continue
                 self.hass.bus.async_fire(
                     EVENT_SKOLENGO,
-                    {
-                        "type": event_type,
-                        "student_name": student_name,
-                        **lesson,
-                    },
+                    _lesson_event_payload(event_type, student_name, lesson),
                 )
 
         self._known_lessons = current
         self._known_agenda_end = agenda_end
+
+
+def _lesson_event_payload(event_type: str, student_name: str, lesson: dict) -> dict:
+    """`skolengo_event` data for a lesson change.
+
+    The raw lesson carries its own JSON:API `type` ("lesson"), which must not
+    shadow the event `type` automations trigger on.
+    """
+    return {**lesson, "type": event_type, "student_name": student_name}
 
 
 def _lesson_snapshot(lesson: dict) -> dict:

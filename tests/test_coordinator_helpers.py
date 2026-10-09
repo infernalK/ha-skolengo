@@ -8,12 +8,27 @@ from custom_components.skolengo.coordinator import (
     _find_student_info,
     _is_lesson_addition_genuine,
     _last_period_end,
+    _lesson_event_payload,
     _lesson_snapshot,
 )
 from custom_components.skolengo.const import (
     EVENT_TYPE_LESSON_CANCELED,
     EVENT_TYPE_LESSON_MODIFIED,
 )
+
+
+# --- _lesson_event_payload -------------------------------------------------
+
+
+def test_lesson_event_payload_type_is_not_shadowed_by_the_lesson_own_type():
+    # Raw lessons come from the JSON:API deserializer with `type: "lesson"`.
+    lesson = {"id": "1", "type": "lesson", "canceled": True, "title": "Technologie"}
+
+    payload = _lesson_event_payload(EVENT_TYPE_LESSON_CANCELED, "Ewen M", lesson)
+
+    assert payload["type"] == EVENT_TYPE_LESSON_CANCELED
+    assert payload["student_name"] == "Ewen M"
+    assert payload["title"] == "Technologie"
 
 
 # --- _lesson_snapshot ------------------------------------------------------
