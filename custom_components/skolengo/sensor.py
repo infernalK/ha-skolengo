@@ -263,14 +263,24 @@ def _serialize_lesson(lesson: dict) -> dict:
 class SkolengoTimetableDaySensorBase(SkolengoSensorBase):
     """Shared day-grouping logic for the two timetable-by-day sensors."""
 
+    _by_day_source: list | None = None
+    _by_day_cache: dict | None = None
+
     def _lessons_by_day(self) -> dict:
+        # Grouping parses every lesson's datetime and runs several times per
+        # state write; reuse it until the coordinator hands us a new list.
+        lessons = self._lessons
+        if self._by_day_cache is not None and lessons is self._by_day_source:
+            return self._by_day_cache
         by_day: dict = {}
-        for lesson in self._lessons:
+        for lesson in lessons:
             start = dt_util.parse_datetime(lesson.get("startDateTime") or "")
             if not start:
                 continue
             start = dt_util.as_local(start)
             by_day.setdefault(start.date(), []).append(lesson)
+        self._by_day_source = lessons
+        self._by_day_cache = by_day
         return by_day
 
     def _lessons_for(self, day) -> list[dict]:
