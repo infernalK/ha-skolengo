@@ -100,6 +100,7 @@ Devoirs à faire, à associer à un capteur `..._homework_due`.
 type: custom:skolengo-homework-card
 entity: sensor.skolengo_..._homework_due
 display_done_homework: true
+only_upcoming_homework: true  # masque les devoirs dont l'échéance est passée (défaut : false)
 max_items: 15
 ```
 

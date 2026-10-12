@@ -415,6 +415,7 @@
     display_outdated_alert: "Alerter si les données ne sont pas à jour",
     display_done_homework: "Afficher les devoirs déjà faits",
     reduce_done_homework: "Réduire l'affichage des devoirs faits",
+    only_upcoming_homework: "Afficher uniquement les devoirs d'aujourd'hui et à venir",
     max_items: "Nombre maximum d'éléments",
     display_date: "Afficher la date",
     display_coefficient: "Afficher le coefficient",
@@ -633,6 +634,7 @@
         display_outdated_alert: true,
         display_done_homework: false,
         reduce_done_homework: true,
+        only_upcoming_homework: false,
         max_items: 20,
         ...config,
       };
@@ -688,10 +690,20 @@
       }
 
       const attrs = stateObj.attributes || {};
-      const assignments = (Array.isArray(attrs.assignments) ? attrs.assignments.slice() : []).sort(
-        (a, b) => (a.due_date || "").localeCompare(b.due_date || "")
+      const upcomingOnly = (hw) => {
+        if (!this._config.only_upcoming_homework) return true;
+        const d = parseDate(hw.due_date);
+        if (!d) return true;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return d >= today;
+      };
+      const assignments = (Array.isArray(attrs.assignments) ? attrs.assignments.slice() : [])
+        .filter(upcomingOnly)
+        .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
+      const doneAssignments = (Array.isArray(attrs.done_assignments) ? attrs.done_assignments : []).filter(
+        upcomingOnly
       );
-      const doneAssignments = Array.isArray(attrs.done_assignments) ? attrs.done_assignments : [];
       const maxItems = this._config.max_items;
 
       let html = "";
@@ -741,6 +753,7 @@
         boolField("display_header"), boolField("display_outdated_alert"),
         boolField("display_done_homework"),
         boolField("reduce_done_homework"),
+        boolField("only_upcoming_homework"),
         MAX_ITEMS_FIELD,
       ],
       "assignments"
