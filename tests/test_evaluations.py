@@ -205,3 +205,25 @@ def test_period_id_is_tagged_by_coordinator_and_propagated():
 
 def test_empty_input_returns_empty_list():
     assert flatten_evaluations([]) == []
+
+
+def test_format_grade_message_numeric_and_skills():
+    from custom_components.skolengo.evaluations import format_grade_message
+
+    assert (
+        format_grade_message(
+            {"subject": "Espagnol", "mark": 17.0, "scale": 20, "class_average": 12.7, "title": "Contrôle"}
+        )
+        == "Espagnol : 17/20 - Moyenne classe : 12.7 (Contrôle)"
+    )
+    assert (
+        format_grade_message(
+            {
+                "subject": "Maths",
+                "mark": None,
+                "title": None,
+                "skills": [{"skill": "Calculer", "level": "Maîtrise satisfaisante"}],
+            }
+        )
+        == "Maths : Calculer : Maîtrise satisfaisante"
+    )

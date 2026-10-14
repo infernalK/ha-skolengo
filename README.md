@@ -218,11 +218,9 @@ action:
   - service: notify.mobile_app_mon_telephone
     data:
       title: "Nouvelle note - {{ trigger.event.data.student_name }}"
-      message: >-
-        {{ trigger.event.data.subject }} : {{ trigger.event.data.mark }}/{{ trigger.event.data.scale }}
-        ({{ trigger.event.data.title }})
+      message: "{{ trigger.event.data.message }}"
 ```
-Données disponibles notamment : `student_name`, `subject`, `title`, `mark`, `scale`, `date`.
+`message` est un texte prêt à l'emploi qui gère à la fois les notes chiffrées (« Espagnol : 17/20 - Moyenne classe : 12.7 (Contrôle) ») et les évaluations par compétences, sans note (« Mathématiques : Calculer : Maîtrise satisfaisante (Évaluation 3) »). Données disponibles notamment : `student_name`, `subject`, `title` (peut être vide), `mark` (vide pour une évaluation par compétences), `scale`, `class_average`, `skills` (liste de `skill`/`level`), `date`, `message`.
 
 **Nouveau devoir**
 ```yaml

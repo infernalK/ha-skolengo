@@ -104,3 +104,33 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                 }
             )
     return items
+
+
+def format_grade_message(item: dict) -> str:
+    """Human-readable one-liner for a flattened evaluation, used as the
+    `message` of `new_grade` events so automations don't have to branch on
+    numeric vs skill-based evaluations.
+
+    Numeric: "Espagnol : 17/20 - Moyenne classe : 12.7 (Contrôle 2)".
+    Skill-based (no mark): "Mathématiques : Calculer : Maîtrise
+    satisfaisante, Raisonner : Maîtrise fragile (Évaluation 3)".
+    """
+    parts = [f"{item.get('subject') or 'Évaluation'} :"]
+    mark = item.get("mark")
+    if mark is not None:
+        mark_text = f"{mark:g}/{item.get('scale') or 20:g}"
+        parts.append(mark_text)
+        if item.get("class_average") is not None:
+            parts.append(f"- Moyenne classe : {item['class_average']}")
+    else:
+        skills = [
+            f"{s['skill']} : {s['level']}" if s.get("skill") and s.get("level")
+            else (s.get("level") or s.get("skill"))
+            for s in item.get("skills") or []
+        ]
+        skills = [s for s in skills if s]
+        parts.append(", ".join(skills) if skills else "évaluation par compétences")
+    title = item.get("title")
+    if title:
+        parts.append(f"({title})")
+    return " ".join(parts)
