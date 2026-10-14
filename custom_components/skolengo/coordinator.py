@@ -45,7 +45,7 @@ from .const import (
     SCHOOL_YEAR_START_DAY,
     SCHOOL_YEAR_START_MONTH,
 )
-from .evaluations import apply_skill_level_labels, flatten_evaluations
+from .evaluations import apply_skill_level_labels, flatten_evaluations, format_grade_message
 from .homework import flatten_homework
 from .news import flatten_school_news
 from .school_life import flatten_absence_file, flatten_schooling_events
@@ -482,6 +482,7 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                                 "type": EVENT_TYPE_NEW_GRADE,
                                 "student_name": student_name,
                                 **item,
+                                "message": format_grade_message(item),
                             },
                         )
 
