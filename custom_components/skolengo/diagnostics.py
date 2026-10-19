@@ -1,7 +1,7 @@
 """Diagnostics support for Skolengo.
 
 Redacts the refresh token and the student's own identifying fields
-(name, date of birth, photo) before the dump is handed to the user for
+(name, account id, date of birth, photo) and the news author before the dump is handed to the user for
 download -- everything else (lessons, homework, grades structure) is
 kept as-is since that's exactly the raw shape needed to debug parsing
 bugs like the ones already fixed in this integration (grades stuck on
@@ -18,8 +18,17 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import SkolengoDataUpdateCoordinator
 
-TO_REDACT_ENTRY = {"refresh_token", "user_id"}
-TO_REDACT_DATA = {"firstName", "lastName", "dateOfBirth", "photoUrl", "student_name", "issuer", "comment"}
+TO_REDACT_ENTRY = {"refresh_token", "user_id", "student_id", "student_name"}
+TO_REDACT_DATA = {
+    "firstName",
+    "lastName",
+    "dateOfBirth",
+    "photoUrl",
+    "student_name",
+    "issuer",
+    "comment",
+    "author",
+}
 
 
 async def async_get_config_entry_diagnostics(
