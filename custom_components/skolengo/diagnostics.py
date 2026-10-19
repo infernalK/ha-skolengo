@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -59,7 +59,13 @@ async def async_get_config_entry_diagnostics(
                 "news": data.news,
                 "evaluations": data.evaluations,
                 "periods": data.periods,
-                "student_info": data.student_info,
+                # The record's top-level id is the child's Skolengo account id
+                # (the user_id too for direct student logins).
+                "student_info": (
+                    {**data.student_info, "id": REDACTED}
+                    if isinstance(data.student_info, dict) and "id" in data.student_info
+                    else data.student_info
+                ),
                 "next_alarm": data.next_alarm.isoformat() if data.next_alarm else None,
             }
             if data
