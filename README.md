@@ -1,5 +1,6 @@
 # Skolengo pour Home Assistant
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=infernalK&repository=ha-skolengo&category=integration)
 [![Tests](https://github.com/infernalK/ha-skolengo/actions/workflows/tests.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/tests.yaml)
 [![Validate with hassfest](https://github.com/infernalK/ha-skolengo/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/hassfest.yaml)
 [![Validate with HACS](https://github.com/infernalK/ha-skolengo/actions/workflows/hacs.yaml/badge.svg)](https://github.com/infernalK/ha-skolengo/actions/workflows/hacs.yaml)
@@ -11,6 +12,18 @@ Intégration **communautaire et non officielle** pour [Skolengo](https://www.sko
 > **Avertissement** : ce projet n'est ni développé, ni maintenu, ni approuvé par Skolengo ou Index Education. Il s'appuie sur une analyse non officielle de l'API utilisée par l'application mobile Skolengo, qui peut changer ou être bloquée à tout moment sans préavis. Utilisez-le à vos risques et périls, avec vos propres identifiants.
 
 Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote](https://github.com/delphiki/hass-pronote), qui fait la même chose pour Pronote.
+
+## Sommaire
+
+- [Fonctionnalités](#fonctionnalités)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Limitations connues](#limitations-connues)
+- [Cartes Lovelace intégrées](#cartes-lovelace-intégrées)
+- [Exemples d'automatisations](#exemples-dautomatisations)
+- [Mise à jour](#mise-à-jour)
+- [Désinstaller](#désinstaller)
+- [Signaler un problème](#signaler-un-problème)
 
 ## Fonctionnalités
 
@@ -33,17 +46,32 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
 
 ## Installation
 
-### Via HACS (recommandé)
+L'intégration est référencée officiellement dans HACS (Home Assistant Community Store).
 
-1. Dans HACS, ouvrez le menu **⋮ → Dépôts personnalisés (Custom repositories)**.
-2. Ajoutez l'URL de ce dépôt (`https://github.com/infernalK/ha-skolengo`) avec la catégorie **Intégration**.
-3. Recherchez "Skolengo" dans HACS et installez-le.
-4. Redémarrez Home Assistant.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=infernalK&repository=ha-skolengo&category=integration)
 
-### Installation manuelle
-
-1. Copiez le dossier `custom_components/skolengo` de ce dépôt dans le dossier `custom_components` de votre configuration Home Assistant.
-2. Redémarrez Home Assistant.
+<details>
+    <summary>Cliquez ici pour afficher les instructions détaillées</summary>
+    <ol>
+        <li>Installation</li>
+        <ul>
+            <li>
+                <u>Via HACS (recommandé)</u><br />
+                <ol>
+                    <li>Cliquer sur le badge ci-dessus (ouvre directement la fiche du dépôt dans HACS), ou ouvrir HACS manuellement et aller dans les Intégrations.</li>
+                    <li>Chercher "Skolengo" si vous n'êtes pas passé par le badge.</li>
+                    <li>Cliquer sur le résultat puis sur "Télécharger".</li>
+                </ol>
+            </li>
+            <li>
+                <u>Manuellement</u><br />
+                Télécharger la <a href="https://github.com/infernalK/ha-skolengo/releases">dernière release</a> au format ZIP et copier le dossier <code>custom_components/skolengo</code> dans le répertoire <code>custom_components</code> de votre installation HA.
+            </li>
+        </ul>
+        <li>Redémarrer HA pour qu'il charge l'intégration.</li>
+        <li>Aller dans 'Paramètres > Appareils et services' et cliquer sur le bouton bleu '+ Ajouter une intégration'. Chercher 'Skolengo' et le sélectionner (voir <a href="#configuration">Configuration</a>).</li>
+    </ol>
+</details>
 
 ## Configuration
 
@@ -328,6 +356,51 @@ action:
 ```
 
 Données de `new_news` : `school_name`, `id`, `date`, `title`, `summary`, `content` (texte brut), `author`, `url`, `image` et `attachments`. Les actualités appartiennent à l'établissement : si plusieurs enfants y sont scolarisés, un seul événement est émis par article (et non un par enfant), sans champ `student_name`.
+
+## Mise à jour
+
+<details>
+    <summary>Cliquez pour afficher les instructions de mise à jour</summary>
+    <ol>
+        <li>Mettre à jour les fichiers</li>
+        <ul>
+            <li>
+                <u>Avec HACS</u><br>
+                Dans le panneau HACS, une notification apparaît quand une nouvelle version est disponible. Suivre les instructions de HACS pour mettre à jour.
+            </li>
+            <li>
+                <u>Manuellement</u><br>
+                Télécharger la <a href="https://github.com/infernalK/ha-skolengo/releases">dernière release</a> au format ZIP et copier <code>custom_components/skolengo</code> dans le répertoire <code>custom_components</code> de votre installation HA pour écraser l'ancienne version.
+            </li>
+        </ul>
+        <li>Redémarrer HA pour charger les modifications.</li>
+    </ol>
+</details>
+
+## Désinstaller
+
+<details>
+    <summary>Cliquez pour afficher les instructions de désinstallation</summary>
+    <ol>
+        <li>
+            <u>Supprimer Skolengo de HA :</u><br>
+            Aller dans 'Paramètres > Appareils et services'. Dans la section Skolengo, cliquer sur le bouton '...' de chaque entrée, et sélectionner 'Supprimer'.
+        </li>
+        <li>Supprimer les fichiers</li>
+        <ul>
+            <li>
+                <u>Avec HACS</u><br />
+                Dans le panneau HACS, aller sur les intégrations et chercher 'Skolengo'.
+                Cliquer sur le bouton '...' et sélectionner 'Supprimer'.
+            </li>
+            <li>
+                <u>Manuellement</u><br />
+                Dans le répertoire <code>custom_components</code>, supprimer le répertoire <code>skolengo</code>.
+            </li>
+        </ul>
+        <li>Redémarrer HA pour supprimer toutes les traces de l'intégration.</li>
+    </ol>
+</details>
 
 ## Signaler un problème
 
