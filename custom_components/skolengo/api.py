@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -358,6 +359,37 @@ class SkolengoClient:
                     return urljoin(page_url, target)
         return None
 
+    # Redirect targets assigned from inline JavaScript, e.g.
+    # `window.location.href = "..."`, `location.replace('...')`.
+    _JS_REDIRECT_RE = re.compile(
+        r"""(?:(?:window|document|top|self)\.)?location(?:\.href)?\s*=\s*(['"])(?P<a>[^'"]+)\1"""
+        r"""|location\.(?:replace|assign)\(\s*(['"])(?P<b>[^'"]+)\3\s*\)""",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _find_script_redirect_url(cls, page_url: str, html: str) -> str | None:
+        """Return a redirect target for a page that has no form to submit.
+
+        Some SSO hops answer 200 with no <form> at all and hand over to the
+        next step through inline JavaScript (`window.location = ...`) or a
+        plain link, including the final `skoapp-prod://` callback carrying
+        the authorization code. Only called when the page has no form.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        for anchor in soup.find_all("a", href=True):
+            if anchor["href"].startswith(REDIRECT_URI):
+                return anchor["href"]
+        for script in soup.find_all("script"):
+            match = cls._JS_REDIRECT_RE.search(script.get_text() or "")
+            if not match:
+                continue
+            target = (match.group("a") or match.group("b") or "").strip()
+            target = target.replace("\\/", "/").replace("\\x3d", "=").replace("\\x26", "&")
+            if target and not target.startswith(("javascript:", "#")):
+                return urljoin(page_url, target)
+        return None
+
     @classmethod
     def _fill_and_submit_form(
         cls,
@@ -384,9 +416,20 @@ class SkolengoClient:
         soup = BeautifulSoup(page_response.text, "html.parser")
         form = soup.find("form")
         if form is None:
+            title = soup.title.get_text(strip=True) if soup.title else ""
+            parsed_url = urlparse(page_url)
+            _LOGGER.debug(
+                "No form on %s%s (HTTP %s, title %r): %.500s",
+                parsed_url.netloc,
+                parsed_url.path,
+                page_response.status_code,
+                title,
+                " ".join(soup.get_text(" ", strip=True).split()),
+            )
             raise SkolengoAuthError(
                 "Impossible de trouver le formulaire de connexion sur la page de "
-                "l'établissement (login form not found)."
+                f"l'établissement (login form not found) : {parsed_url.netloc}"
+                f"{parsed_url.path} - {title or 'sans titre'}."
             )
 
         action = form.get("action") or page_url
@@ -638,6 +681,20 @@ class SkolengoClient:
                         raise SkolengoAuthError(f"Meta-refresh follow-up failed: {err}") from err
                     url = meta_url
                     continue
+
+                if "<form" not in resp.text.lower():
+                    script_url = cls._find_script_redirect_url(resp.url, resp.text)
+                    if script_url:
+                        if script_url.startswith(REDIRECT_URI):
+                            return cls._extract_code_from_url(script_url)
+                        try:
+                            resp = session.get(script_url, timeout=20, allow_redirects=False)
+                        except requests.RequestException as err:
+                            raise SkolengoAuthError(
+                                f"Script-redirect follow-up failed: {err}"
+                            ) from err
+                        url = script_url
+                        continue
 
                 prev_resp = resp
                 resp, was_credentials = cls._fill_and_submit_form(
