@@ -36,6 +36,13 @@
           "username": "Identifiant",
           "password": "Mot de passe"
         }
+      },
+      "birthdate": {
+        "title": "Confirmation de l'identité",
+        "description": "Votre fournisseur d'identité demande la date de naissance de l'élève {student}. Saisissez-la au format JJ/MM/AAAA (utilisée uniquement pour cette connexion, non conservée).",
+        "data": {
+          "birthdate": "Date de naissance"
+        }
       }
     },
     "error": {
@@ -43,7 +50,9 @@
       "invalid_auth": "Identifiants incorrects, ou formulaire de connexion non pris en charge pour cet établissement.",
       "no_school_found": "Aucun établissement trouvé pour cette recherche.",
       "no_student_found": "Aucun élève trouvé sur ce compte.",
-      "unknown": "Erreur inattendue."
+      "unknown": "Erreur inattendue.",
+      "invalid_birthdate": "La date de naissance saisie n'est pas acceptée par le fournisseur d'identité.",
+      "invalid_birthdate_format": "Date invalide, utilisez le format JJ/MM/AAAA."
     },
     "abort": {
       "already_configured": "Cet élève est déjà configuré.",

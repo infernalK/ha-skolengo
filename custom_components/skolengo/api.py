@@ -96,6 +96,22 @@ class SkolengoAuthError(SkolengoError):
     """Raised when authentication fails (bad credentials, unsupported login page, etc.)."""
 
 
+class SkolengoBirthdateRequired(SkolengoAuthError):
+    """Raised when the identity provider asks to confirm a student's birth date.
+
+    ÉduConnect (parent accounts) occasionally asks for the birth date of one
+    of the pupils the parent is responsible for. `student_name` is the pupil
+    named on the page (may be empty if it couldn't be read).
+    """
+
+    def __init__(self, student_name: str = "") -> None:
+        super().__init__(
+            "L'identity provider demande la date de naissance de l'élève "
+            f"{student_name or '(nom non lisible)'} (birth date confirmation required)."
+        )
+        self.student_name = student_name
+
+
 class SkolengoApiError(SkolengoError):
     """Raised when a call to the Skolengo API fails."""
 
@@ -283,6 +299,7 @@ class SkolengoClient:
         school: SkolengoSchool,
         username: str,
         password: str,
+        birthdate: tuple[int, int, int] | None = None,
     ) -> "SkolengoClient":
         """Perform the full OIDC authorization-code login flow for a school.
 
@@ -331,6 +348,7 @@ class SkolengoClient:
             username=username,
             password=password,
             school_name=school.name,
+            birthdate=birthdate,
         )
 
         if not code:
@@ -424,6 +442,7 @@ class SkolengoClient:
         password: str,
         allow_relay: bool,
         school_name: str = "",
+        birthdate: tuple[int, int, int] | None = None,
     ) -> tuple[requests.Response, bool]:
         """Parse a generic CAS/SSO page and POST credentials (or relay it).
 
@@ -520,8 +539,31 @@ class SkolengoClient:
             button_type = (button_tag.get("type") or "submit").lower()
             if button_type != "submit":
                 continue
+            # Skip "go back" style buttons (e.g. ÉduConnect's
+            # `_eventId_RestartAuthentication`), which would abort the flow.
+            if any(kw in name.lower() for kw in ("restart", "cancel", "back")):
+                continue
             form_data[name] = button_tag.get("value") or ""
             submit_button_included = True
+
+        # ÉduConnect (parent accounts) sometimes asks to confirm the birth
+        # date of one of the pupils the parent is responsible for, with
+        # separate `jour`/`mois`/`annee` fields.
+        if cls._is_birthdate_form(form):
+            student_name = cls._birthdate_student_name(form)
+            _LOGGER.debug(
+                "Birth date confirmation requested on %s for %r (date provided: %s)",
+                _safe_url(page_url),
+                student_name,
+                birthdate is not None,
+            )
+            if birthdate is None:
+                raise SkolengoBirthdateRequired(student_name)
+            day, month, year = birthdate
+            form_data["jour"] = f"{day:02d}"
+            form_data["mois"] = f"{month:02d}"
+            form_data["annee"] = f"{year:04d}"
+            return cls._submit_form(session, post_url, method, form_data), False
 
         # Some establishments (typically public schools using the national
         # Éduconnect / academic SSO federation) present a "Where Are You
@@ -578,6 +620,28 @@ class SkolengoClient:
 
         resp = cls._submit_form(session, post_url, method, form_data)
         return resp, True
+
+    @staticmethod
+    def _is_birthdate_form(form: Any) -> bool:
+        names = {t.get("name") for t in form.find_all(["input", "select"])}
+        return {"jour", "mois", "annee"} <= names
+
+    @staticmethod
+    def _birthdate_student_name(form: Any) -> str:
+        """Best-effort read of the pupil's name shown above the date fields."""
+        field = form.find(attrs={"name": "jour"})
+        node = field
+        while node is not None and node is not form.parent:
+            fieldset = node if node.name == "fieldset" else None
+            if fieldset is not None:
+                legend = fieldset.find("legend")
+                if legend is not None:
+                    return " ".join(legend.get_text(" ", strip=True).split()).rstrip(" *")
+            node = node.parent
+        for label in form.find_all(["legend", "label", "p"]):
+            if label.find(attrs={"name": "jour"}) is not None or label.get("for") == "jour":
+                return " ".join(label.get_text(" ", strip=True).split()).rstrip(" *")
+        return ""
 
     @staticmethod
     def _submit_form(
@@ -703,6 +767,7 @@ class SkolengoClient:
         username: str,
         password: str,
         school_name: str = "",
+        birthdate: tuple[int, int, int] | None = None,
     ) -> str | None:
         """Manually follow redirects (since requests can't follow a custom
         non-HTTP URI scheme) until we hit the redirect_uri carrying `code`,
@@ -711,6 +776,7 @@ class SkolengoClient:
         resp = response
         url = current_url
         credentials_submitted = False
+        birthdate_submitted = False
 
         for hop in range(MAX_REDIRECT_HOPS):
             _LOGGER.debug(
@@ -769,9 +835,24 @@ class SkolengoClient:
                         continue
 
                 prev_resp = resp
+                is_birthdate_page = bool(re.search(r"name=[\"']annee[\"']", resp.text))
+                if is_birthdate_page and birthdate_submitted:
+                    # The date form came back after we submitted one: it was
+                    # rejected. Ask for it again rather than loop.
+                    student_name = cls._birthdate_student_name(
+                        BeautifulSoup(resp.text, "html.parser").find("form")
+                    )
+                    raise SkolengoBirthdateRequired(student_name)
                 resp, was_credentials = cls._fill_and_submit_form(
-                    session, resp, username, password, allow_relay=True, school_name=school_name
+                    session,
+                    resp,
+                    username,
+                    password,
+                    allow_relay=True,
+                    school_name=school_name,
+                    birthdate=birthdate,
                 )
+                birthdate_submitted = birthdate_submitted or is_birthdate_page
                 if was_credentials and credentials_submitted:
                     # A credential-looking login form was shown twice in a
                     # row: treat it as invalid credentials rather than loop
