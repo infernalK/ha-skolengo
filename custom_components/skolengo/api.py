@@ -112,6 +112,10 @@ class SkolengoBirthdateRequired(SkolengoAuthError):
         self.student_name = student_name
         # True when a date was submitted for this pupil and refused.
         self.rejected = rejected
+        # Live login state (session + pending page) so the login can carry on
+        # from this very page once the date is known, instead of starting over
+        # (ÉduConnect picks the pupil at random on every new login).
+        self.resume: dict[str, Any] | None = None
 
 
 class SkolengoLoginRefused(SkolengoAuthError):
@@ -306,8 +310,13 @@ class SkolengoClient:
         username: str,
         password: str,
         birthdates: dict[str, tuple[int, int, int]] | None = None,
+        resume: dict[str, Any] | None = None,
     ) -> "SkolengoClient":
         """Perform the full OIDC authorization-code login flow for a school.
+
+        `resume` is the state carried by a `SkolengoBirthdateRequired`: when
+        given, the login continues on the pending birth date page of that same
+        session; if that fails for another reason, it starts over.
 
         Because the redirect_uri is a mobile-app-only custom URI scheme
         (`skoapp-prod://sign-in-callback`), we can't literally follow the
@@ -315,6 +324,14 @@ class SkolengoClient:
         and pull the `code` query parameter off the first `Location` header
         that starts with that scheme.
         """
+        if resume is not None:
+            try:
+                return cls._login_resume(school, username, password, birthdates, resume)
+            except SkolengoBirthdateRequired:
+                raise
+            except SkolengoAuthError as err:
+                _LOGGER.debug("Resuming the login failed (%s), starting over", err)
+
         session = requests.Session()
         session.headers.update({"User-Agent": USER_AGENT})
 
@@ -347,15 +364,20 @@ class SkolengoClient:
             raise SkolengoAuthError(f"Unable to reach the authorization endpoint: {err}") from err
 
         auth_url = resp.url
-        code = cls._walk_redirect_chain(
-            session,
-            resp,
-            auth_url,
-            username=username,
-            password=password,
-            school_name=school.name,
-            birthdates=birthdates,
-        )
+        try:
+            code = cls._walk_redirect_chain(
+                session,
+                resp,
+                auth_url,
+                username=username,
+                password=password,
+                school_name=school.name,
+                birthdates=birthdates,
+            )
+        except SkolengoBirthdateRequired as err:
+            if err.resume is not None:
+                err.resume["token_endpoint"] = token_endpoint
+            raise
 
         if not code:
             raise SkolengoAuthError(
@@ -364,6 +386,36 @@ class SkolengoClient:
             )
 
         return cls._exchange_code(school, session, token_endpoint, code)
+
+    @classmethod
+    def _login_resume(
+        cls,
+        school: SkolengoSchool,
+        username: str,
+        password: str,
+        birthdates: dict[str, tuple[int, int, int]] | None,
+        resume: dict[str, Any],
+    ) -> "SkolengoClient":
+        """Carry on a login paused on the birth date page, in the same session."""
+        _LOGGER.debug("Resuming the login on %s", _safe_url(resume["response"].url))
+        try:
+            code = cls._walk_redirect_chain(
+                resume["session"],
+                resume["response"],
+                resume["url"],
+                username=username,
+                password=password,
+                school_name=school.name,
+                birthdates=birthdates,
+                credentials_submitted=resume["credentials_submitted"],
+            )
+        except SkolengoBirthdateRequired as err:
+            if err.resume is not None:
+                err.resume["token_endpoint"] = resume["token_endpoint"]
+            raise
+        if not code:
+            raise SkolengoAuthError("Could not obtain an authorization code after resuming.")
+        return cls._exchange_code(school, resume["session"], resume["token_endpoint"], code)
 
     @staticmethod
     def _fetch_discovery_document(wellknown_url: str, session: requests.Session) -> dict[str, Any]:
@@ -801,6 +853,7 @@ class SkolengoClient:
         password: str,
         school_name: str = "",
         birthdates: dict[str, tuple[int, int, int]] | None = None,
+        credentials_submitted: bool = False,
     ) -> str | None:
         """Manually follow redirects (since requests can't follow a custom
         non-HTTP URI scheme) until we hit the redirect_uri carrying `code`,
@@ -808,7 +861,6 @@ class SkolengoClient:
         """
         resp = response
         url = current_url
-        credentials_submitted = False
         birthdate_name: str | None = None
 
         for hop in range(MAX_REDIRECT_HOPS):
@@ -887,6 +939,15 @@ class SkolengoClient:
                         school_name=school_name,
                         birthdates=birthdates,
                     )
+                except SkolengoBirthdateRequired as err:
+                    if not err.rejected:
+                        err.resume = {
+                            "session": session,
+                            "response": prev_resp,
+                            "url": url,
+                            "credentials_submitted": credentials_submitted,
+                        }
+                    raise
                 except SkolengoLoginRefused:
                     if birthdate_name is not None:
                         # ÉduConnect answers a wrong birth date with a final
