@@ -182,9 +182,18 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if error:
             errors["base"] = error
 
+        # The pupil's name goes into the field label itself so it stays visible
+        # even if the translated description isn't loaded (translations are
+        # only reloaded on a full Home Assistant restart).
+        name = self._birthdate_student or "?"
+        if str(self.hass.config.language).startswith("fr"):
+            field = f"Date de naissance de {name} (JJ/MM/AAAA)"
+        else:
+            field = f"Birth date of {name} (DD/MM/YYYY)"
+
         if user_input is not None:
             match = re.fullmatch(
-                r"\s*(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{4})\s*", user_input["birthdate"]
+                r"\s*(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{4})\s*", next(iter(user_input.values()))
             )
             if match and 1 <= int(match[1]) <= 31 and 1 <= int(match[2]) <= 12:
                 self._birthdates[self._birthdate_student.casefold()] = (
@@ -200,7 +209,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="birthdate",
-            data_schema=vol.Schema({vol.Required("birthdate"): str}),
+            data_schema=vol.Schema({vol.Required(field): str}),
             description_placeholders={"student": self._birthdate_student or "?"},
             errors=errors,
         )
