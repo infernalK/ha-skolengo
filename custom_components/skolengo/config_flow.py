@@ -55,7 +55,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._user_info: dict[str, Any] | None = None
         self._students: list[dict[str, Any]] = []
         self._reauth_entry: config_entries.ConfigEntry | None = None
-        self._birthdate: tuple[int, int, int] | None = None
+        self._birthdates: dict[str, tuple[int, int, int]] = {}
         self._birthdate_student: str = ""
 
     async def async_step_user(
@@ -131,7 +131,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._selected_school,
                     self._username,
                     self._password,
-                    self._birthdate,
+                    self._birthdates,
                 )
                 user_id = await self.hass.async_add_executor_job(
                     self._client.get_user_id
@@ -170,9 +170,9 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _ask_birthdate(self, err: SkolengoBirthdateRequired) -> FlowResult:
         """The IdP wants a pupil's birth date: ask for it (again if it was wrong)."""
         self._birthdate_student = err.student_name
-        wrong = self._birthdate is not None
-        self._birthdate = None
-        return await self.async_step_birthdate(error="invalid_birthdate" if wrong else None)
+        if err.rejected:
+            self._birthdates.pop(err.student_name.casefold(), None)
+        return await self.async_step_birthdate(error="invalid_birthdate" if err.rejected else None)
 
     async def async_step_birthdate(
         self, user_input: dict[str, Any] | None = None, error: str | None = None
@@ -187,7 +187,11 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 r"\s*(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{4})\s*", user_input["birthdate"]
             )
             if match and 1 <= int(match[1]) <= 31 and 1 <= int(match[2]) <= 12:
-                self._birthdate = (int(match[1]), int(match[2]), int(match[3]))
+                self._birthdates[self._birthdate_student.casefold()] = (
+                    int(match[1]),
+                    int(match[2]),
+                    int(match[3]),
+                )
                 credentials = {"username": self._username, "password": self._password}
                 if self._reauth_entry is not None:
                     return await self.async_step_reauth_confirm(credentials)
@@ -312,7 +316,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._selected_school,
                     self._username,
                     self._password,
-                    self._birthdate,
+                    self._birthdates,
                 )
             except SkolengoBirthdateRequired as err:
                 return await self._ask_birthdate(err)

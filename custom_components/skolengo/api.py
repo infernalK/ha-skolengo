@@ -104,12 +104,18 @@ class SkolengoBirthdateRequired(SkolengoAuthError):
     named on the page (may be empty if it couldn't be read).
     """
 
-    def __init__(self, student_name: str = "") -> None:
+    def __init__(self, student_name: str = "", rejected: bool = False) -> None:
         super().__init__(
             "L'identity provider demande la date de naissance de l'élève "
             f"{student_name or '(nom non lisible)'} (birth date confirmation required)."
         )
         self.student_name = student_name
+        # True when a date was submitted for this pupil and refused.
+        self.rejected = rejected
+
+
+class SkolengoLoginRefused(SkolengoAuthError):
+    """Raised when the identity provider explicitly shows a "login refused" page."""
 
 
 class SkolengoApiError(SkolengoError):
@@ -299,7 +305,7 @@ class SkolengoClient:
         school: SkolengoSchool,
         username: str,
         password: str,
-        birthdate: tuple[int, int, int] | None = None,
+        birthdates: dict[str, tuple[int, int, int]] | None = None,
     ) -> "SkolengoClient":
         """Perform the full OIDC authorization-code login flow for a school.
 
@@ -348,7 +354,7 @@ class SkolengoClient:
             username=username,
             password=password,
             school_name=school.name,
-            birthdate=birthdate,
+            birthdates=birthdates,
         )
 
         if not code:
@@ -442,7 +448,7 @@ class SkolengoClient:
         password: str,
         allow_relay: bool,
         school_name: str = "",
-        birthdate: tuple[int, int, int] | None = None,
+        birthdates: dict[str, tuple[int, int, int]] | None = None,
     ) -> tuple[requests.Response, bool]:
         """Parse a generic CAS/SSO page and POST credentials (or relay it).
 
@@ -471,7 +477,7 @@ class SkolengoClient:
                 " ".join(soup.get_text(" ", strip=True).split()),
             )
             if any(m in page_response.text.lower() for m in LOGIN_REFUSED_MARKERS):
-                raise SkolengoAuthError(
+                raise SkolengoLoginRefused(
                     "Le serveur d'authentification a refusé la connexion "
                     f"({parsed_url.netloc}{parsed_url.path} - {title or 'sans titre'}) : "
                     "vérifiez vos identifiants, ou ce parcours de connexion n'est "
@@ -555,11 +561,12 @@ class SkolengoClient:
                 "Birth date confirmation requested on %s for %r (date provided: %s)",
                 _safe_url(page_url),
                 student_name,
-                birthdate is not None,
+                student_name.casefold() in (birthdates or {}),
             )
-            if birthdate is None:
+            known = (birthdates or {}).get(student_name.casefold())
+            if known is None:
                 raise SkolengoBirthdateRequired(student_name)
-            day, month, year = birthdate
+            day, month, year = known
             form_data["jour"] = f"{day:02d}"
             form_data["mois"] = f"{month:02d}"
             form_data["annee"] = f"{year:04d}"
@@ -767,7 +774,7 @@ class SkolengoClient:
         username: str,
         password: str,
         school_name: str = "",
-        birthdate: tuple[int, int, int] | None = None,
+        birthdates: dict[str, tuple[int, int, int]] | None = None,
     ) -> str | None:
         """Manually follow redirects (since requests can't follow a custom
         non-HTTP URI scheme) until we hit the redirect_uri carrying `code`,
@@ -776,7 +783,7 @@ class SkolengoClient:
         resp = response
         url = current_url
         credentials_submitted = False
-        birthdate_submitted = False
+        birthdate_name: str | None = None
 
         for hop in range(MAX_REDIRECT_HOPS):
             _LOGGER.debug(
@@ -836,23 +843,30 @@ class SkolengoClient:
 
                 prev_resp = resp
                 is_birthdate_page = bool(re.search(r"name=[\"']annee[\"']", resp.text))
-                if is_birthdate_page and birthdate_submitted:
+                if is_birthdate_page and birthdate_name is not None:
                     # The date form came back after we submitted one: it was
                     # rejected. Ask for it again rather than loop.
-                    student_name = cls._birthdate_student_name(
+                    raise SkolengoBirthdateRequired(birthdate_name, rejected=True)
+                if is_birthdate_page:
+                    birthdate_name = cls._birthdate_student_name(
                         BeautifulSoup(resp.text, "html.parser").find("form")
                     )
-                    raise SkolengoBirthdateRequired(student_name)
-                resp, was_credentials = cls._fill_and_submit_form(
-                    session,
-                    resp,
-                    username,
-                    password,
-                    allow_relay=True,
-                    school_name=school_name,
-                    birthdate=birthdate,
-                )
-                birthdate_submitted = birthdate_submitted or is_birthdate_page
+                try:
+                    resp, was_credentials = cls._fill_and_submit_form(
+                        session,
+                        resp,
+                        username,
+                        password,
+                        allow_relay=True,
+                        school_name=school_name,
+                        birthdates=birthdates,
+                    )
+                except SkolengoLoginRefused:
+                    if birthdate_name is not None:
+                        # ÉduConnect answers a wrong birth date with a final
+                        # "Connexion refusée" page (no form to retry).
+                        raise SkolengoBirthdateRequired(birthdate_name, rejected=True) from None
+                    raise
                 if was_credentials and credentials_submitted:
                     # A credential-looking login form was shown twice in a
                     # row: treat it as invalid credentials rather than loop
