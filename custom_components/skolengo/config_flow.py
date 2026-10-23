@@ -57,6 +57,8 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
         self._birthdates: dict[str, tuple[int, int, int]] = {}
         self._birthdate_student: str = ""
+        # Live login paused on the birth date page, resumed once it's entered.
+        self._resume: dict[str, Any] | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -132,6 +134,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._username,
                     self._password,
                     self._birthdates,
+                    self._take_resume(),
                 )
                 user_id = await self.hass.async_add_executor_job(
                     self._client.get_user_id
@@ -167,9 +170,15 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _take_resume(self) -> dict[str, Any] | None:
+        """Hand over (and forget) the paused login: it can only be used once."""
+        resume, self._resume = self._resume, None
+        return resume
+
     async def _ask_birthdate(self, err: SkolengoBirthdateRequired) -> FlowResult:
         """The IdP wants a pupil's birth date: ask for it (again if it was wrong)."""
         self._birthdate_student = err.student_name
+        self._resume = None if err.rejected else err.resume
         if err.rejected:
             self._birthdates.pop(err.student_name.casefold(), None)
         return await self.async_step_birthdate(error="invalid_birthdate" if err.rejected else None)
@@ -326,6 +335,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._username,
                     self._password,
                     self._birthdates,
+                    self._take_resume(),
                 )
             except SkolengoBirthdateRequired as err:
                 return await self._ask_birthdate(err)
