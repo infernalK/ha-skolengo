@@ -63,6 +63,31 @@ PASSWORD_FIELD_CANDIDATES = (
 )
 
 
+# Phrases an identity provider shows when it explicitly rejects a login.
+LOGIN_REFUSED_MARKERS = (
+    "connexion refusée",
+    "connexion refusee",
+    "identifiant ou mot de passe",
+    "informations saisies ne permettent pas",
+    "incorrect",
+    "invalid credentials",
+    "authentication failed",
+)
+
+
+def _safe_url(url: str | None) -> str:
+    """Host + path only: query strings may carry SAML/OIDC tokens."""
+    if not url:
+        return "-"
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" if parsed.netloc else url.split("?")[0]
+
+
+def _page_text(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    return " ".join(soup.get_text(" ", strip=True).split())
+
+
 class SkolengoError(Exception):
     """Base error for the Skolengo client."""
 
@@ -426,6 +451,13 @@ class SkolengoClient:
                 title,
                 " ".join(soup.get_text(" ", strip=True).split()),
             )
+            if any(m in page_response.text.lower() for m in LOGIN_REFUSED_MARKERS):
+                raise SkolengoAuthError(
+                    "Le serveur d'authentification a refusé la connexion "
+                    f"({parsed_url.netloc}{parsed_url.path} - {title or 'sans titre'}) : "
+                    "vérifiez vos identifiants, ou ce parcours de connexion n'est "
+                    "pas encore pris en charge (login refused by identity provider)."
+                )
             raise SkolengoAuthError(
                 "Impossible de trouver le formulaire de connexion sur la page de "
                 f"l'établissement (login form not found) : {parsed_url.netloc}"
@@ -507,6 +539,28 @@ class SkolengoClient:
                 if choice is not None:
                     form_data[group_name] = choice
 
+        _LOGGER.debug(
+            "Login form on %s (HTTP %s, title %r): %s %s, fields=%s, hidden=%s, "
+            "radios=%s, username_field=%s, password_field=%s, button=%s",
+            _safe_url(page_url),
+            page_response.status_code,
+            soup.title.get_text(strip=True) if soup.title else "",
+            method.upper(),
+            _safe_url(post_url),
+            sorted(
+                n for n in (t.get("name") for t in form.find_all(["input", "button", "select"])) if n
+            ),
+            sorted(
+                t.get("name")
+                for t in form.find_all("input", attrs={"type": "hidden"})
+                if t.get("name")
+            ),
+            {k: len(v) for k, v in radio_groups.items()},
+            username_field,
+            password_field,
+            next((b.get("name") for b in form.find_all("button") if b.get("name")), None),
+        )
+
         if not username_field or not password_field:
             if allow_relay:
                 # Likely a WAYF picker (handled above) or an auto-submitting
@@ -531,10 +585,19 @@ class SkolengoClient:
     ) -> requests.Response:
         try:
             if method == "get":
-                return session.get(url, params=form_data, timeout=20, allow_redirects=False)
-            return session.post(url, data=form_data, timeout=20, allow_redirects=False)
+                resp = session.get(url, params=form_data, timeout=20, allow_redirects=False)
+            else:
+                resp = session.post(url, data=form_data, timeout=20, allow_redirects=False)
         except requests.RequestException as err:
             raise SkolengoAuthError(f"Form submission failed: {err}") from err
+        _LOGGER.debug(
+            "Submitted %s form to %s -> HTTP %s, Location=%s",
+            method.upper(),
+            _safe_url(url),
+            resp.status_code,
+            _safe_url(resp.headers.get("Location")) if resp.headers.get("Location") else "-",
+        )
+        return resp
 
     # Keywords (matched against the radio's <label>, id or value) used to
     # pick the most likely "I'm a student/parent" option on a WAYF-style
@@ -649,7 +712,16 @@ class SkolengoClient:
         url = current_url
         credentials_submitted = False
 
-        for _ in range(MAX_REDIRECT_HOPS):
+        for hop in range(MAX_REDIRECT_HOPS):
+            _LOGGER.debug(
+                "Login hop %d: %s (HTTP %s%s)",
+                hop,
+                _safe_url(resp.url),
+                resp.status_code,
+                f", title {BeautifulSoup(resp.text, 'html.parser').title.get_text(strip=True)!r}"
+                if resp.status_code == 200 and BeautifulSoup(resp.text, "html.parser").title
+                else "",
+            )
             code = cls._extract_code_from_url(resp.url)
             if code:
                 return code
@@ -705,6 +777,11 @@ class SkolengoClient:
                     # row: treat it as invalid credentials rather than loop
                     # forever on an unsupported flow.
                     lowered = prev_resp.text.lower()
+                    _LOGGER.debug(
+                        "Login form shown again on %s: %.500s",
+                        _safe_url(prev_resp.url),
+                        _page_text(prev_resp.text),
+                    )
                     if any(
                         kw in lowered
                         for kw in ("mot de passe", "password", "identifiant", "incorrect", "erreur")
