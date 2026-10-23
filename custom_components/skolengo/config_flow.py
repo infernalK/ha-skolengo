@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -12,6 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 from .api import (
     SkolengoAuthError,
     SkolengoApiError,
+    SkolengoBirthdateRequired,
     SkolengoClient,
     SkolengoSchool,
 )
@@ -53,6 +55,8 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._user_info: dict[str, Any] | None = None
         self._students: list[dict[str, Any]] = []
         self._reauth_entry: config_entries.ConfigEntry | None = None
+        self._birthdate: tuple[int, int, int] | None = None
+        self._birthdate_student: str = ""
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -127,6 +131,7 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._selected_school,
                     self._username,
                     self._password,
+                    self._birthdate,
                 )
                 user_id = await self.hass.async_add_executor_job(
                     self._client.get_user_id
@@ -134,6 +139,8 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_info = await self.hass.async_add_executor_job(
                     self._client.get_user_info, user_id
                 )
+            except SkolengoBirthdateRequired as err:
+                return await self._ask_birthdate(err)
             except SkolengoAuthError as err:
                 _LOGGER.warning("Skolengo login failed: %s", err)
                 errors["base"] = "invalid_auth"
@@ -157,6 +164,40 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {vol.Required("username"): str, vol.Required("password"): str}
             ),
+            errors=errors,
+        )
+
+    async def _ask_birthdate(self, err: SkolengoBirthdateRequired) -> FlowResult:
+        """The IdP wants a pupil's birth date: ask for it (again if it was wrong)."""
+        self._birthdate_student = err.student_name
+        wrong = self._birthdate is not None
+        self._birthdate = None
+        return await self.async_step_birthdate(error="invalid_birthdate" if wrong else None)
+
+    async def async_step_birthdate(
+        self, user_input: dict[str, Any] | None = None, error: str | None = None
+    ) -> FlowResult:
+        """Ask the birth date of the pupil named by the identity provider."""
+        errors: dict[str, str] = {}
+        if error:
+            errors["base"] = error
+
+        if user_input is not None:
+            match = re.fullmatch(
+                r"\s*(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{4})\s*", user_input["birthdate"]
+            )
+            if match and 1 <= int(match[1]) <= 31 and 1 <= int(match[2]) <= 12:
+                self._birthdate = (int(match[1]), int(match[2]), int(match[3]))
+                credentials = {"username": self._username, "password": self._password}
+                if self._reauth_entry is not None:
+                    return await self.async_step_reauth_confirm(credentials)
+                return await self.async_step_credentials(credentials)
+            errors["base"] = "invalid_birthdate_format"
+
+        return self.async_show_form(
+            step_id="birthdate",
+            data_schema=vol.Schema({vol.Required("birthdate"): str}),
+            description_placeholders={"student": self._birthdate_student or "?"},
             errors=errors,
         )
 
@@ -271,7 +312,10 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._selected_school,
                     self._username,
                     self._password,
+                    self._birthdate,
                 )
+            except SkolengoBirthdateRequired as err:
+                return await self._ask_birthdate(err)
             except SkolengoAuthError as err:
                 _LOGGER.warning("Skolengo login failed: %s", err)
                 errors["base"] = "invalid_auth"

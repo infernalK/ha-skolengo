@@ -36,6 +36,13 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "birthdate": {
+        "title": "Confirm identity",
+        "description": "Your identity provider asks for the birth date of the pupil {student}. Enter it as DD/MM/YYYY (used only for this sign-in, not stored).",
+        "data": {
+          "birthdate": "Birth date"
+        }
       }
     },
     "error": {
@@ -43,7 +50,9 @@
       "invalid_auth": "Incorrect credentials, or the login form for this school isn't supported.",
       "no_school_found": "No school found for this search.",
       "no_student_found": "No student found on this account.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "invalid_birthdate": "The birth date entered is not accepted by the identity provider.",
+      "invalid_birthdate_format": "Invalid date, use the DD/MM/YYYY format."
     },
     "abort": {
       "already_configured": "This student is already configured.",
