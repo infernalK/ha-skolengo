@@ -563,6 +563,11 @@ class SkolengoClient:
                 student_name,
                 student_name.casefold() in (birthdates or {}),
             )
+            _LOGGER.debug(
+                "Birth date form structure: %s | page text: %.600s",
+                cls._describe_birthdate_form(form),
+                " ".join(soup.get_text(" ", strip=True).split()),
+            )
             known = (birthdates or {}).get(student_name.casefold())
             if known is None:
                 raise SkolengoBirthdateRequired(student_name)
@@ -570,6 +575,12 @@ class SkolengoClient:
             form_data["jour"] = f"{day:02d}"
             form_data["mois"] = f"{month:02d}"
             form_data["annee"] = f"{year:04d}"
+            _LOGGER.debug(
+                "Birth date submitted as fields %s (jour/mois %d digits, annee %d digits)",
+                sorted(k for k in form_data if k in ("jour", "mois", "annee", "_eventId_proceed")),
+                len(form_data["jour"]),
+                len(form_data["annee"]),
+            )
             return cls._submit_form(session, post_url, method, form_data), False
 
         # Some establishments (typically public schools using the national
@@ -632,6 +643,21 @@ class SkolengoClient:
     def _is_birthdate_form(form: Any) -> bool:
         names = {t.get("name") for t in form.find_all(["input", "select"])}
         return {"jour", "mois", "annee"} <= names
+
+    @staticmethod
+    def _describe_birthdate_form(form: Any) -> str:
+        """Value-free HTML skeleton around the date fields, for diagnostics."""
+        node = form.find(attrs={"name": "jour"})
+        container = node.find_parent("fieldset") if node is not None else None
+        container = container or (node.parent.parent if node is not None else form)
+        copy = BeautifulSoup(str(container), "html.parser")
+        for tag in copy.find_all(["script", "style", "svg"]):
+            tag.decompose()
+        for tag in copy.find_all("input", attrs={"type": "hidden"}):
+            tag.decompose()
+        for tag in copy.find_all(True):
+            tag.attrs.pop("value", None)
+        return " ".join(str(copy).split())[:2000]
 
     @staticmethod
     def _birthdate_student_name(form: Any) -> str:
