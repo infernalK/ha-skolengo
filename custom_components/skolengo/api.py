@@ -627,9 +627,17 @@ class SkolengoClient:
             form_data["jour"] = f"{day:02d}"
             form_data["mois"] = f"{month:02d}"
             form_data["annee"] = f"{year:04d}"
+            # ÉduConnect's page script copies the date into the hidden
+            # `j_password` field as YYYY-MM-DD when the fields are filled in,
+            # and that field is what the server checks: without it the date is
+            # always refused, whatever jour/mois/annee say.
+            if "j_password" in form_data:
+                form_data["j_password"] = f"{year:04d}-{month:02d}-{day:02d}"
             _LOGGER.debug(
                 "Birth date submitted as fields %s (jour/mois %d digits, annee %d digits)",
-                sorted(k for k in form_data if k in ("jour", "mois", "annee", "_eventId_proceed")),
+                sorted(
+                    k for k in form_data if k in ("jour", "mois", "annee", "j_password", "_eventId_proceed")
+                ),
                 len(form_data["jour"]),
                 len(form_data["annee"]),
             )
@@ -924,6 +932,11 @@ class SkolengoClient:
                 if is_birthdate_page and birthdate_name is not None:
                     # The date form came back after we submitted one: it was
                     # rejected. Ask for it again rather than loop.
+                    _LOGGER.debug(
+                        "Birth date page shown again on %s after submitting a date: %.600s",
+                        _safe_url(resp.url),
+                        _page_text(resp.text),
+                    )
                     raise SkolengoBirthdateRequired(birthdate_name, rejected=True)
                 if is_birthdate_page:
                     birthdate_name = cls._birthdate_student_name(
