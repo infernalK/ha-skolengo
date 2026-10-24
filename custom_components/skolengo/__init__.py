@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import timedelta
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
@@ -91,6 +92,28 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         return
 
     hass.data[_FRONTEND_REGISTERED_KEY] = True
+
+    if hass.is_running:
+        # Registered while Home Assistant is already up (integration just
+        # added): a browser tab or companion app that is already open has
+        # neither the extra JS URL nor the new Lovelace resource yet, so the
+        # cards show "Erreur de configuration" until the page is reloaded.
+        french = str(hass.config.language).startswith("fr")
+        persistent_notification.async_create(
+            hass,
+            (
+                "Les cartes Skolengo viennent d'être installées. Si elles "
+                "affichent « Erreur de configuration », rechargez la page de "
+                "Home Assistant sans cache (Ctrl+F5 / Cmd+Maj+R), ou fermez et "
+                "rouvrez l'application mobile."
+                if french
+                else "The Skolengo cards were just installed. If they show "
+                "\"Configuration error\", hard-reload the Home Assistant page "
+                "(Ctrl+F5 / Cmd+Shift+R), or close and reopen the mobile app."
+            ),
+            title="Skolengo",
+            notification_id=f"{DOMAIN}_reload_cards",
+        )
 
     # The extra JS URL above is baked into the frontend's index page, which
     # the iOS/Android companion apps may keep cached for a long time. A
