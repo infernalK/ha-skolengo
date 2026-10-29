@@ -31,7 +31,7 @@
       },
       "reauth_confirm": {
         "title": "Reconnexion à Skolengo",
-        "description": "La session a expiré, merci de vous reconnecter.",
+        "description": "La connexion à Skolengo pour {student} a expiré (mot de passe modifié ou session révoquée). Saisissez à nouveau les identifiants du compte pour reprendre la mise à jour des données.",
         "data": {
           "username": "Identifiant",
           "password": "Mot de passe"
@@ -72,6 +72,9 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "reauth_required": { "name": "Reconnexion requise" }
+    },
     "sensor": {
       "student_class": { "name": "Classe" },
       "next_lesson": { "name": "Prochain cours" },

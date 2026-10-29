@@ -165,6 +165,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
         self._failing: set[str] = set()
         # Days Skolengo's /agendas refused (500) on the last agenda fetch.
         self.agenda_skipped: list[str] = []
+        # True while Skolengo rejects our credentials: the user has to sign
+        # in again. Exposed by the "reauth required" binary sensor.
+        self.auth_failed = False
         # Persisted so the last known data also survives a restart of Home
         # Assistant that happens during an outage.
         self._store: Store = Store(hass, CACHE_STORAGE_VERSION, f"{DOMAIN}_cache_{entry.entry_id}")
@@ -246,10 +249,49 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
             "last_ok": {source: when.isoformat() for source, when in self._last_ok.items()},
         }
 
+    def _async_stale_data_on_auth_failure(self) -> SkolengoData:
+        """Credentials rejected: ask the user to sign in again, but keep
+        the entities available with the last known data (flagged as
+        outdated) instead of putting the whole entry in error."""
+        self.client = None
+        if not self.auth_failed:
+            self.auth_failed = True
+            _LOGGER.warning(
+                "Skolengo credentials for %s were rejected; reauthentication required",
+                self.entry.title,
+            )
+            self.entry.async_start_reauth(self.hass)
+        cache = self._cache
+        periods, evaluations = cache.get(SOURCE_EVALUATIONS) or ([], [])
+        sources = (
+            SOURCE_AGENDA,
+            SOURCE_HOMEWORK,
+            SOURCE_ABSENCES,
+            SOURCE_SCHOOL_LIFE,
+            SOURCE_NEWS,
+            SOURCE_EVALUATIONS,
+            SOURCE_STUDENT_INFO,
+        )
+        return SkolengoData(
+            lessons=cache.get(SOURCE_AGENDA) or [],
+            homework=cache.get(SOURCE_HOMEWORK) or [],
+            absences=cache.get(SOURCE_ABSENCES) or [],
+            school_life=cache.get(SOURCE_SCHOOL_LIFE) or {},
+            news=cache.get(SOURCE_NEWS) or [],
+            absences_fetched=SOURCE_ABSENCES in cache,
+            evaluations=evaluations,
+            periods=periods,
+            student_info=cache.get(SOURCE_STUDENT_INFO) or {},
+            freshness={s: SourceFreshness(False, self._last_ok.get(s)) for s in sources},
+        )
+
     async def _async_update_data(self) -> SkolengoData:
         if not self._cache_loaded:
             await self._async_load_cache()
-        client = await self._async_ensure_client()
+        try:
+            client = await self._async_ensure_client()
+        except ConfigEntryAuthFailed:
+            return self._async_stale_data_on_auth_failure()
 
         today = dt_util.now().date()
         agenda_days_future = self.entry.options.get(CONF_AGENDA_DAYS_FUTURE)
@@ -441,12 +483,15 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
 
         try:
             data = await self.hass.async_add_executor_job(_fetch)
-        except SkolengoAuthError as err:
-            self.client = None
-            raise ConfigEntryAuthFailed(str(err)) from err
+        except SkolengoAuthError:
+            return self._async_stale_data_on_auth_failure()
         except SkolengoApiError as err:
+            # The token may have been rotated before the failure: keep the
+            # new one, the old one is already invalid server-side.
+            self._async_persist_refresh_token()
             raise UpdateFailed(str(err)) from err
 
+        self.auth_failed = False
         self._async_persist_refresh_token()
         self._store.async_delay_save(self._cache_to_store, 30)
         self._async_fire_new_grade_events(data.evaluations)

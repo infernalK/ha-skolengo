@@ -253,7 +253,10 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._client is not None
 
         await self.async_set_unique_id(f"{self._selected_school.id}-{student['id']}")
-        self._abort_if_unique_id_configured()
+        if self._reauth_entry is None:
+            # On reauth the entry already exists: aborting here would skip
+            # the token update below.
+            self._abort_if_unique_id_configured()
 
         data = {
             CONF_SCHOOL_ID: self._selected_school.id,
@@ -355,6 +358,11 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {vol.Required("username"): str, vol.Required("password"): str}
             ),
+            description_placeholders={
+                "student": self._students[0].get("firstName") or "?"
+                if self._students
+                else "?"
+            },
             errors=errors,
         )
 
