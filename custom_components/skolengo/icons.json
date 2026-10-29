@@ -1,5 +1,8 @@
 {
   "entity": {
+    "binary_sensor": {
+      "reauth_required": { "default": "mdi:account-alert-outline" }
+    },
     "sensor": {
       "student_class": { "default": "mdi:account-school-outline" },
       "next_lesson": { "default": "mdi:book-open-variant" },

@@ -31,7 +31,7 @@
       },
       "reauth_confirm": {
         "title": "Reconnect to Skolengo",
-        "description": "Your session has expired, please sign in again.",
+        "description": "The Skolengo connection for {student} has expired (password changed or session revoked). Enter the account credentials again to resume data updates.",
         "data": {
           "username": "Username",
           "password": "Password"
@@ -72,6 +72,9 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "reauth_required": { "name": "Reauthentication required" }
+    },
     "sensor": {
       "student_class": { "name": "Class" },
       "next_lesson": { "name": "Next lesson" },

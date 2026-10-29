@@ -69,7 +69,7 @@ DEFAULT_UPDATE_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
 # are still found.
 HOMEWORK_AGENDA_LOOKBACK_DAYS = 60
 
-PLATFORMS = ["calendar", "sensor"]
+PLATFORMS = ["binary_sensor", "calendar", "sensor"]
 
 MANUFACTURER = "Skolengo (unofficial)"
 
