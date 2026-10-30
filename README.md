@@ -108,7 +108,7 @@ Elles sont **chargées automatiquement** dès que l'intégration est configurée
 
 Emploi du temps du jour (ou du prochain jour d'école s'il n'y a plus de cours aujourd'hui), à associer à un capteur `..._timetable_next_day`.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-timetable-card.png" alt="Rendu de la carte skolengo-timetable-card" width="380">
+![Rendu de la carte skolengo-timetable-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-timetable-card.png)
 
 ```yaml
 type: custom:skolengo-timetable-card
@@ -122,7 +122,7 @@ display_outdated_alert: true  # bandeau « données peut-être pas à jour » (d
 
 Devoirs à faire, à associer à un capteur `..._homework_due`.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-homework-card.png" alt="Rendu de la carte skolengo-homework-card" width="380">
+![Rendu de la carte skolengo-homework-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-homework-card.png)
 
 ```yaml
 type: custom:skolengo-homework-card
@@ -136,7 +136,7 @@ max_items: 15
 
 Notes et évaluations de compétences ("Notes"), à associer au capteur `..._notes` (celui qui porte le nombre de notes ; le détail de chaque note est dans son attribut `evaluations`). Le capteur `..._moyenne_generale` reste séparé et ne porte que la moyenne chiffrée.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-evaluations-card.png" alt="Rendu de la carte skolengo-evaluations-card" width="380">
+![Rendu de la carte skolengo-evaluations-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-evaluations-card.png)
 
 ```yaml
 type: custom:skolengo-evaluations-card
@@ -149,7 +149,7 @@ display_class_average: true
 
 Uniquement les évaluations de compétences (niveaux de maîtrise), groupées par matière comme la vue "Compétences" de Skolengo, à associer au même capteur `..._notes` que `skolengo-evaluations-card`.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-competencies-card.png" alt="Rendu de la carte skolengo-competencies-card" width="380">
+![Rendu de la carte skolengo-competencies-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-competencies-card.png)
 
 ```yaml
 type: custom:skolengo-competencies-card
@@ -171,7 +171,7 @@ display_skills: false
 
 Moyenne générale et détail des moyennes par matière, à associer au capteur `..._moyenne_generale`. Ce capteur porte la moyenne générale (pondérée par coefficient) comme état, et le détail par matière (`by_subject` : moyenne de l'élève et de la classe pour chaque matière, elle-même pondérée par coefficient si la matière a été suivie sur plusieurs périodes) en attribut.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-averages-card.png" alt="Rendu de la carte skolengo-averages-card" width="380">
+![Rendu de la carte skolengo-averages-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-averages-card.png)
 
 ```yaml
 type: custom:skolengo-averages-card
@@ -191,13 +191,13 @@ Quatre cartes, une par type, chacune à associer au capteur correspondant :
 | `skolengo-observations-card` | `..._observations` |
 | `skolengo-punishments-card` | `..._punishments` (punitions) |
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-absences-card.png" alt="Rendu de la carte skolengo-absences-card" width="380">
+![Rendu de la carte skolengo-absences-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-absences-card.png)
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-delays-card.png" alt="Rendu de la carte skolengo-delays-card" width="380">
+![Rendu de la carte skolengo-delays-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-delays-card.png)
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-observations-card.png" alt="Rendu de la carte skolengo-observations-card" width="380">
+![Rendu de la carte skolengo-observations-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-observations-card.png)
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-punishments-card.png" alt="Rendu de la carte skolengo-punishments-card" width="380">
+![Rendu de la carte skolengo-punishments-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-punishments-card.png)
 
 ```yaml
 type: custom:skolengo-absences-card
@@ -218,7 +218,7 @@ entity: sensor.skolengo_..._observations
 
 Actualités de l'établissement, à associer au capteur `..._news` (état = titre de la dernière actualité ; attributs `count` et `news` : date, titre, résumé, texte, auteur, lien, `image` (l'illustration de l'article, souvent le seul contenu d'une annonce) et `attachments` (nom, type, taille, lien des pièces jointes). Chaque fichier a aussi un `path` : l'adresse Home Assistant qui le sert (voir ci-dessous). Les pièces jointes ne sont disponibles qu'article par article côté Skolengo : elles sont récupérées une seule fois pour chacune des 10 actualités les plus récentes. Les actualités appartiennent à l'établissement, pas à l'élève : le capteur est rattaché à un appareil « Skolengo - *nom de l'établissement* », et il n'y en a qu'un seul même si plusieurs enfants y sont scolarisés.
 
-<img src="https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-news-card.png" alt="Rendu de la carte skolengo-news-card" width="380">
+![Rendu de la carte skolengo-news-card](https://raw.githubusercontent.com/infernalK/ha-skolengo/main/docs/img/skolengo-news-card.png)
 
 ```yaml
 type: custom:skolengo-news-card
