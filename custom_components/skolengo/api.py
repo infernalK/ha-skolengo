@@ -1432,7 +1432,13 @@ class SkolengoClient:
                 "evaluations.subSkills"
             ),
             "fields[evaluationService]": "coefficient,average,studentAverage,scale,subject,teachers",
-            "fields[evaluation]": "title,topic,dateTime,coefficient,average,scale,evaluationResult",
+            "fields[evaluation]": "title,topic,dateTime,coefficient,average,scale,evaluationResult,subSkills",
+            # Once any `fields[...]` is given, types without their own
+            # entry come back without attributes -- so the marks and the
+            # skill levels (which live on these) must be listed too.
+            "fields[evaluationResult]": "mark,nonEvaluationReason,subSkillsEvaluationResults",
+            "fields[subSkillEvaluationResult]": "level,subSkill",
+            "fields[subSkill]": "shortLabel,label",
         }
         if period_id:
             params["filter[period.id]"] = period_id
