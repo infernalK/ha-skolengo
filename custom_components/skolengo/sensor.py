@@ -699,6 +699,10 @@ class SkolengoEvaluationsSensor(SkolengoSensorBase):
     _attr_native_unit_of_measurement = "notes"
     _attr_translation_key = "evaluations"
     _source = SOURCE_EVALUATIONS
+    # The lists (duplicated per period, with skill levels) exceed the
+    # recorder's 16 KB attribute limit; keep them out of history so the
+    # remaining attributes are stored. The card reads the live state.
+    _unrecorded_attributes = frozenset({"evaluations", "evaluations_by_period", "periods"})
 
     def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "evaluations", "Notes")
