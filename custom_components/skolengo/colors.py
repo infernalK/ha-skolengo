@@ -32,8 +32,9 @@ def normalize_color(color: str | None) -> str | None:
 # French label shown in Skolengo's own app -- translate it here so it
 # doesn't leak into the UI as-is.
 _MASTERY_LEVEL_LABELS = {
+    "NONE": "Aucune sélection",
     "NOT_EVALUATED": "Aucune sélection",
-    "LOW_MASTERY": "Maîtrise insuffisante",
+    "LOW_MASTERY": "Maîtrise fragile",
     "INSUFFICIENT_MASTERY": "Maîtrise insuffisante",
     "FRAGILE_MASTERY": "Maîtrise fragile",
     "SATISFACTORY_MASTERY": "Maîtrise satisfaisante",
