@@ -252,11 +252,19 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._selected_school is not None
         assert self._client is not None
 
+        if self._reauth_entry is not None:
+            # Reauth: only the refresh token changes. No user info was fetched
+            # in this flow, so keep every other stored value as it is.
+            data = {
+                **self._reauth_entry.data,
+                CONF_REFRESH_TOKEN: self._client.tokens.refresh_token,
+            }
+            self.hass.config_entries.async_update_entry(self._reauth_entry, data=data)
+            await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+            return self.async_abort(reason="reauth_successful")
+
         await self.async_set_unique_id(f"{self._selected_school.id}-{student['id']}")
-        if self._reauth_entry is None:
-            # On reauth the entry already exists: aborting here would skip
-            # the token update below.
-            self._abort_if_unique_id_configured()
+        self._abort_if_unique_id_configured()
 
         data = {
             CONF_SCHOOL_ID: self._selected_school.id,
@@ -270,11 +278,6 @@ class SkolengoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         title = f"Skolengo - {self._student_label(student)}"
-
-        if self._reauth_entry is not None:
-            self.hass.config_entries.async_update_entry(self._reauth_entry, data=data)
-            await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-            return self.async_abort(reason="reauth_successful")
 
         return self.async_create_entry(title=title, data=data)
 
