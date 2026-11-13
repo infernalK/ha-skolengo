@@ -22,15 +22,15 @@ from .coordinator import (
     SkolengoDataUpdateCoordinator,
 )
 from .evaluations import flatten_evaluations as _evaluation_list
-from .homework import flatten_homework
+from .homework import flatten_homework, select_homework_attributes
 from .news import claim_news_sensor
 from .school_life import flatten_absence_file as _serialize_absence_file
 
-# Cap on the "assignments"/"done_assignments" attribute lists exposed by
-# `SkolengoHomeworkDueSensor` -- just to bound the live state's size to
-# something sane, since `_unrecorded_attributes` on that sensor (below)
-# already keeps them out of recorder history regardless of size.
-MAX_HOMEWORK_ATTRS = 30
+# Cap on the *past* (already due) entries of the "assignments"/
+# "done_assignments" attribute lists exposed by `SkolengoHomeworkDueSensor`.
+# Homework due today or later is never capped, so upcoming assignments can't
+# be pushed out by months of old unticked ones.
+MAX_PAST_HOMEWORK_ATTRS = 30
 
 
 async def async_setup_entry(
@@ -409,18 +409,10 @@ class SkolengoHomeworkDueSensor(SkolengoSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        homework_sorted = sorted(
-            self._homework, key=lambda hw: hw.get("dueDate") or hw.get("dueDateTime") or ""
-        )
-        not_done = [hw for hw in homework_sorted if not hw.get("done")]
-        # Most recently due first for the "done" list -- with the agenda now
-        # spanning the whole school year, sorting it ascending like
-        # `not_done` would surface September's completed homework instead of
-        # anything recent.
-        done = list(reversed([hw for hw in homework_sorted if hw.get("done")]))
+        not_done, done = select_homework_attributes(self._homework, max_past=MAX_PAST_HOMEWORK_ATTRS)
         return {
-            "assignments": [flatten_homework(hw) for hw in not_done[:MAX_HOMEWORK_ATTRS]],
-            "done_assignments": [flatten_homework(hw) for hw in done[:MAX_HOMEWORK_ATTRS]],
+            "assignments": [flatten_homework(hw) for hw in not_done],
+            "done_assignments": [flatten_homework(hw) for hw in done],
             **self._freshness(),
         }
 
