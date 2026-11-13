@@ -66,7 +66,10 @@
         "data": {
           "scan_interval": "Refresh interval (minutes)",
           "alarm_offset": "Prep time before the first lesson (minutes)",
-          "agenda_days_future": "Timetable lookahead override (days; leave empty to automatically cover through the end of the school year)"
+          "agenda_days_future": "Timetable lookahead (days)"
+        },
+        "data_description": {
+          "agenda_days_future": "Leave empty to automatically cover through the end of the school year."
         }
       }
     }
