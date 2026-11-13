@@ -9,6 +9,11 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .api import (
     SkolengoAuthError,
@@ -397,6 +402,8 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
                 # falls back to fetching through the end of the school year
                 # instead of pinning a fixed day count.
                 data.pop(CONF_AGENDA_DAYS_FUTURE, None)
+            else:
+                data[CONF_AGENDA_DAYS_FUTURE] = int(data[CONF_AGENDA_DAYS_FUTURE])
             return self.async_create_entry(title="", data=data)
 
         current_scan_interval = self.config_entry.options.get(
@@ -406,11 +413,6 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
             CONF_ALARM_OFFSET, DEFAULT_ALARM_OFFSET
         )
         current_agenda_days_future = self.config_entry.options.get(CONF_AGENDA_DAYS_FUTURE)
-        agenda_days_future_key = (
-            vol.Optional(CONF_AGENDA_DAYS_FUTURE, default=current_agenda_days_future)
-            if current_agenda_days_future is not None
-            else vol.Optional(CONF_AGENDA_DAYS_FUTURE)
-        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -421,13 +423,16 @@ class SkolengoOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_ALARM_OFFSET, default=current_alarm_offset
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ALARM_OFFSET)),
-                    agenda_days_future_key: vol.Any(
-                        None,
-                        "",
-                        vol.All(
-                            vol.Coerce(int),
-                            vol.Range(min=MIN_AGENDA_DAYS_FUTURE, max=MAX_AGENDA_DAYS_FUTURE),
-                        ),
+                    vol.Optional(
+                        CONF_AGENDA_DAYS_FUTURE,
+                        description={"suggested_value": current_agenda_days_future},
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_AGENDA_DAYS_FUTURE,
+                            max=MAX_AGENDA_DAYS_FUTURE,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                        )
                     ),
                 }
             ),
