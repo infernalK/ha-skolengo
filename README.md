@@ -40,7 +40,7 @@ Ce projet s'inspire fonctionnellement de l'excellente intégration [hass-pronote
   - Classe, avec date de naissance / régime / établissement en attributs
   - Actualités de l'établissement (`sensor.skolengo_<établissement>_actualites`) : titre de la dernière actualité, avec la liste des 10 plus récentes (texte, image, pièces jointes) en attributs. Un seul capteur par établissement, sur un appareil « Skolengo - *établissement* », même si plusieurs enfants y sont scolarisés.
 - **Événement `skolengo_event`** (types `new_grade`, `new_homework`, `lesson_canceled`, `lesson_modified`, `lesson_added`, `new_absence`, `new_delay`, `new_observation`, `new_punishment` et `new_news`) : émis sur le bus d'événements Home Assistant dès qu'une nouvelle note/évaluation, un nouveau devoir, une nouvelle absence, un nouveau retard, une nouvelle observation, une nouvelle punition ou une nouvelle actualité de l'établissement apparaît, qu'un cours déjà connu est annulé ou change d'horaire/salle/prof, ou qu'un cours est réellement ajouté à l'emploi du temps (rien n'est émis pour ce qui est déjà présent/dans cet état lors du démarrage), à l'image du `pronote_event` de hass-pronote — pratique pour déclencher une notification dans une automatisation. Voir [Exemples d'automatisations](#exemples-dautomatisations) ci-dessous.
-- **Cartes Lovelace intégrées** (emploi du temps, devoirs, notes, absences, retards, observations, punitions, actualités), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
+- **Cartes Lovelace intégrées** (emploi du temps, cours annulés, devoirs, notes, absences, retards, observations, punitions, actualités), chargées automatiquement — voir [Cartes Lovelace intégrées](#cartes-lovelace-intégrées).
 - Rafraîchissement automatique périodique (30 minutes par défaut, réglable dans les options de l'intégration). Le délai de préparation utilisé pour le capteur "Prochain réveil" (60 minutes par défaut) est réglable au même endroit.
 - Gestion des comptes "représentant légal" (parent) reliés à plusieurs enfants : un élève par intégration, ajoutez l'intégration plusieurs fois pour suivre plusieurs enfants. Les actualités, qui appartiennent à l'établissement, ne sont pas dupliquées : un seul capteur et un seul événement par article, même avec deux enfants dans le même collège.
 
@@ -116,6 +116,17 @@ entity: sensor.skolengo_..._timetable_next_day
 display_teacher: true
 dim_ended_lessons: true
 display_outdated_alert: true  # bandeau « données peut-être pas à jour » (défaut : true)
+```
+
+### `skolengo-canceled-lessons-card`
+
+Prochains cours annulés (tous ceux qui ne sont pas encore terminés, groupés par jour), à associer à un capteur `..._canceled_lessons`. Le capteur compte les cours annulés à venir et les détaille dans l'attribut `canceled_lessons`.
+
+```yaml
+type: custom:skolengo-canceled-lessons-card
+entity: sensor.skolengo_..._canceled_lessons
+display_teacher: true
+max_items: 10
 ```
 
 ### `skolengo-homework-card`

@@ -85,6 +85,7 @@
       "timetable_today": { "name": "Emploi du temps (aujourd'hui)" },
       "timetable_next_day": { "name": "Emploi du temps (jour suivant)" },
       "today_lesson_count": { "name": "Cours aujourd'hui" },
+      "canceled_lessons": { "name": "Cours annulés" },
       "homework_due": { "name": "Devoirs à faire" },
       "absences": { "name": "Absences" },
       "delays": { "name": "Retards" },

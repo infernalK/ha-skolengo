@@ -85,6 +85,7 @@
       "timetable_today": { "name": "Timetable (today)" },
       "timetable_next_day": { "name": "Timetable (next day)" },
       "today_lesson_count": { "name": "Lessons today" },
+      "canceled_lessons": { "name": "Canceled lessons" },
       "homework_due": { "name": "Homework due" },
       "absences": { "name": "Absences" },
       "delays": { "name": "Late arrivals" },

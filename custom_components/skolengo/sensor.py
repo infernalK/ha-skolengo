@@ -25,6 +25,7 @@ from .evaluations import flatten_evaluations as _evaluation_list
 from .homework import flatten_homework, select_homework_attributes
 from .news import claim_news_sensor
 from .school_life import flatten_absence_file as _serialize_absence_file
+from .timetable import select_upcoming_canceled
 
 # Cap on the *past* (already due) entries of the "assignments"/
 # "done_assignments" attribute lists exposed by `SkolengoHomeworkDueSensor`.
@@ -47,6 +48,7 @@ async def async_setup_entry(
             SkolengoTimetableTodaySensor(coordinator, entry),
             SkolengoTimetableNextDaySensor(coordinator, entry),
             SkolengoTodayLessonCountSensor(coordinator, entry),
+            SkolengoCanceledLessonsSensor(coordinator, entry),
             SkolengoHomeworkDueSensor(coordinator, entry),
             SkolengoAbsencesSensor(coordinator, entry),
             SkolengoDelaysSensor(coordinator, entry),
@@ -383,6 +385,34 @@ class SkolengoTodayLessonCountSensor(SkolengoSensorBase):
             if start and dt_util.as_local(start).date() == today:
                 count += 1
         return count
+
+
+class SkolengoCanceledLessonsSensor(SkolengoSensorBase):
+    """Upcoming canceled lessons (anything not over yet), across the whole
+    timetable window the coordinator fetches -- not just today or the next
+    school day -- for the bundled `skolengo-canceled-lessons-card`.
+    """
+
+    _attr_native_unit_of_measurement = "cours"
+    _attr_translation_key = "canceled_lessons"
+    _source = SOURCE_AGENDA
+
+    def __init__(self, coordinator: SkolengoDataUpdateCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "canceled_lessons", "Cours annulés")
+
+    def _canceled(self) -> list[dict]:
+        return select_upcoming_canceled(self._lessons, dt_util.utcnow())
+
+    @property
+    def native_value(self) -> int:
+        return len(self._canceled())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "canceled_lessons": [_serialize_lesson(lesson) for lesson in self._canceled()],
+            **self._freshness(),
+        }
 
 
 class SkolengoHomeworkDueSensor(SkolengoSensorBase):

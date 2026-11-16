@@ -10,6 +10,7 @@
       "timetable_today": { "default": "mdi:calendar-today-outline" },
       "timetable_next_day": { "default": "mdi:timetable" },
       "today_lesson_count": { "default": "mdi:calendar-today" },
+      "canceled_lessons": { "default": "mdi:calendar-remove-outline" },
       "homework_due": { "default": "mdi:notebook-edit-outline" },
       "absences": { "default": "mdi:account-off-outline" },
       "delays": { "default": "mdi:clock-alert-outline" },

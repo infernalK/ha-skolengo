@@ -621,6 +621,135 @@
   );
 
   // ---------------------------------------------------------------------
+  // skolengo-canceled-lessons-card
+  // ---------------------------------------------------------------------
+
+  class SkolengoCanceledLessonsCard extends HTMLElement {
+    setConfig(config) {
+      if (!config || !config.entity) {
+        throw new Error('"entity" est obligatoire dans la configuration de la carte');
+      }
+      this._config = {
+        display_header: true,
+        display_outdated_alert: true,
+        display_teacher: true,
+        display_classroom: true,
+        display_day_hours: true,
+        ...config,
+      };
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      this._render();
+    }
+
+    getCardSize() {
+      const stateObj = this._hass && this._hass.states[this._config.entity];
+      const lessons = (stateObj && stateObj.attributes.canceled_lessons) || [];
+      return 1 + Math.max(1, lessons.length);
+    }
+
+    connectedCallback() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this._render();
+    }
+
+    _render() {
+      if (!this.shadowRoot) return;
+      if (!this._hass || !this._config) return;
+      const stateObj = this._hass.states[this._config.entity];
+      if (!stateObj) {
+        this.shadowRoot.innerHTML = cardWrapper(
+          `<div class="skolengo-empty">Entité "${escapeHtml(this._config.entity)}" introuvable.</div>`
+        );
+        return;
+      }
+
+      const attrs = stateObj.attributes || {};
+      let lessons = Array.isArray(attrs.canceled_lessons) ? attrs.canceled_lessons.slice() : [];
+      lessons.sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+      const max = Number(this._config.max_items);
+      if (max > 0) lessons = lessons.slice(0, max);
+
+      let html = "";
+      if (this._config.display_header) {
+        const title = this._config.title || "Cours annulés";
+        html += `<div class="skolengo-header">
+          <span class="skolengo-title">${escapeHtml(title)}</span>
+        </div>`;
+      }
+
+      if (!lessons.length) {
+        html += `<div class="skolengo-empty">${
+          attrs.up_to_date === false ? "Aucun cours annulé connu" : "Aucun cours annulé à venir"
+        }</div>`;
+      } else {
+        html += '<div class="skolengo-list">';
+        let currentDay = null;
+        for (const lesson of lessons) {
+          const start = parseDate(lesson.start);
+          if (start && (!currentDay || !isSameDay(currentDay, start))) {
+            currentDay = start;
+            html += `<div class="skolengo-subtitle">${escapeHtml(formatDayHeader(lesson.start))}</div>`;
+          }
+          const color = subjectColor(lesson.subject_color);
+          const teachers = Array.isArray(lesson.teachers)
+            ? lesson.teachers.filter(Boolean).join(", ")
+            : "";
+          const metaBits = [];
+          if (this._config.display_classroom && lesson.location) {
+            metaBits.push(escapeHtml(lesson.location));
+          }
+          if (this._config.display_teacher && teachers) {
+            metaBits.push(escapeHtml(teachers));
+          }
+          const timeLine = this._config.display_day_hours
+            ? `${formatTime(lesson.start)} - ${formatTime(lesson.end)}`
+            : "";
+
+          html += `<div class="skolengo-item" style="--item-color:${color}">
+            <div class="skolengo-item-main">
+              <div class="skolengo-item-top">
+                <span class="skolengo-subject">${escapeHtml(lesson.subject || "Cours")}</span>
+                <span class="skolengo-badge error">Annulé</span>
+              </div>
+              ${timeLine ? `<div class="skolengo-line">${escapeHtml(timeLine)}</div>` : ""}
+              ${metaBits.length ? `<div class="skolengo-line">${metaBits.join(" · ")}</div>` : ""}
+            </div>
+          </div>`;
+        }
+        html += "</div>";
+      }
+
+      this.shadowRoot.innerHTML = cardWrapper(outdatedAlert(attrs, this._config) + html);
+    }
+
+    static getConfigElement() {
+      return document.createElement("skolengo-canceled-lessons-card-editor");
+    }
+
+    static getStubConfig(hass) {
+      return { entity: findFirstCompatibleEntity(hass, "canceled_lessons") };
+    }
+  }
+  safeDefine("skolengo-canceled-lessons-card", SkolengoCanceledLessonsCard);
+  safeDefine(
+    "skolengo-canceled-lessons-card-editor",
+    createConfigEditor(
+      [
+        TITLE_FIELD,
+        MAX_ITEMS_FIELD,
+        boolField("display_header"), boolField("display_outdated_alert"),
+        boolField("display_teacher"),
+        boolField("display_classroom"),
+        boolField("display_day_hours"),
+      ],
+      "canceled_lessons"
+    )
+  );
+
+  // ---------------------------------------------------------------------
   // skolengo-homework-card
   // ---------------------------------------------------------------------
 
@@ -1522,6 +1651,12 @@
       type: "skolengo-timetable-card",
       name: "Skolengo - Emploi du temps",
       description: "Affiche l'emploi du temps du jour (ou du prochain jour d'école) depuis un capteur Skolengo.",
+      preview: false,
+    },
+    {
+      type: "skolengo-canceled-lessons-card",
+      name: "Skolengo - Cours annulés",
+      description: "Affiche les prochains cours annulés depuis un capteur Skolengo.",
       preview: false,
     },
     {
