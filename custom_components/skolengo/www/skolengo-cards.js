@@ -42,6 +42,14 @@
     }
   }
 
+  // Skolengo comments may embed raw HTML (e.g. `<a href="sg.do?...">l'appel</a>`):
+  // keep only the readable text.
+  function plainText(value) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(value == null ? "" : value).replace(/<br\s*\/?>/gi, " ");
+    return (tmp.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
   function escapeHtml(value) {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -1591,8 +1599,8 @@
                   : ""
               }
               ${
-                this._config.display_comment && (item.comment || item.summary)
-                  ? `<div class="skolengo-line">${escapeHtml(item.comment || item.summary)}</div>`
+                this._config.display_comment && plainText(item.comment || item.summary)
+                  ? `<div class="skolengo-line" style="opacity:.75;font-size:.9em">${escapeHtml(plainText(item.comment || item.summary))}</div>`
                   : ""
               }
             </div>
