@@ -75,6 +75,36 @@
     return text.replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
   }
 
+  // Échappe le texte puis transforme les URL http(s) en liens cliquables,
+  // affichés de façon compacte (nom de domaine seul, URL complète en infobulle).
+  function linkify(text) {
+    const re = /https?:\/\/[^\s<>"']+/g;
+    let out = "";
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      let url = m[0];
+      let trailing = "";
+      const t = url.match(/[.,;:!?)\]]+$/);
+      if (t) {
+        trailing = t[0];
+        url = url.slice(0, -trailing.length);
+      }
+      let host = url;
+      try {
+        host = new URL(url).hostname.replace(/^www\./, "");
+      } catch (e) {
+        /* garde l'URL brute */
+      }
+      out += escapeHtml(text.slice(last, m.index));
+      out += `<a class="skolengo-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(
+        url
+      )}">🔗 ${escapeHtml(host)}</a>${escapeHtml(trailing)}`;
+      last = m.index + m[0].length;
+    }
+    return out + escapeHtml(text.slice(last));
+  }
+
   function parseDate(value) {
     if (!value) return null;
     const d = new Date(value);
@@ -213,6 +243,18 @@
     .skolengo-meta {
       color: var(--secondary-text-color);
       font-size: 0.9em;
+    }
+    .skolengo-multiline {
+      white-space: pre-line;
+    }
+    .skolengo-link {
+      color: var(--primary-color);
+      text-decoration: none;
+      font-weight: 500;
+      word-break: normal;
+    }
+    .skolengo-link:hover {
+      text-decoration: underline;
     }
     .skolengo-line {
       color: var(--secondary-text-color);
@@ -809,7 +851,7 @@
             }${escapeHtml(dateLabel)}</span>
           </div>
           ${hw.title ? `<div class="skolengo-line">${escapeHtml(hw.title)}</div>` : ""}
-          ${text ? `<div class="skolengo-line">${escapeHtml(text)}</div>` : ""}
+          ${text ? `<div class="skolengo-line skolengo-multiline">${linkify(text)}</div>` : ""}
           ${hw.teacher ? `<div class="skolengo-line">${escapeHtml(hw.teacher)}</div>` : ""}
         </div>
       </div>`;
