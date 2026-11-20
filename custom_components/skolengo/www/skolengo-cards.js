@@ -72,7 +72,11 @@
       .replace(/<\/p>/gi, "\n")
       .replace(/<[^>]*>/g, " ");
     const text = tmp.textContent || tmp.innerText || "";
-    return text.replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
+    return text
+      .replace(/[ \t\u00a0]+/g, " ")
+      .replace(/ ?\n ?/g, "\n")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
   }
 
   // Échappe le texte puis transforme les URL http(s) en liens cliquables,
