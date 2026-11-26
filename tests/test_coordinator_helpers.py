@@ -6,6 +6,7 @@ from custom_components.skolengo.coordinator import (
     _classify_lesson_change,
     _compute_next_alarm,
     _find_student_info,
+    _classify_new_lesson,
     _is_lesson_addition_genuine,
     _last_period_end,
     _lesson_event_payload,
@@ -240,3 +241,18 @@ def test_last_period_end_is_none_when_unknown():
     assert _last_period_end(None) is None
     assert _last_period_end(([], [])) is None
     assert _last_period_end(([{"endDate": None}], [])) is None
+
+
+def test_new_canceled_lesson_is_reported_as_canceled_not_added():
+    lesson = {"startDateTime": "2026-09-24T08:00:00Z", "canceled": True}
+    assert _classify_new_lesson(lesson, date(2026, 9, 25)) == "lesson_canceled"
+
+
+def test_new_regular_lesson_is_reported_as_added():
+    lesson = {"startDateTime": "2026-09-24T08:00:00Z", "canceled": False}
+    assert _classify_new_lesson(lesson, date(2026, 9, 25)) == "lesson_added"
+
+
+def test_new_lesson_beyond_the_window_is_ignored_even_when_canceled():
+    lesson = {"startDateTime": "2026-10-24T08:00:00Z", "canceled": True}
+    assert _classify_new_lesson(lesson, date(2026, 9, 25)) is None
