@@ -83,7 +83,9 @@ def flatten_evaluations(evaluation_services: list[dict]) -> list[dict]:
                     "id": evaluation.get("id"),
                     "subject": subject.get("label"),
                     "subject_color": normalize_color(subject.get("color")),
-                    "title": evaluation.get("title") or evaluation.get("topic"),
+                    "title": evaluation.get("title")
+                    or evaluation.get("topic")
+                    or (evaluation.get("subSubject") or {}).get("label"),
                     "date": evaluation.get("dateTime"),
                     "mark": mark,
                     "scale": evaluation.get("scale"),

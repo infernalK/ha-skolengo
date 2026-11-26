@@ -1429,21 +1429,33 @@ class SkolengoClient:
                 "evaluations.evaluationResult,"
                 "evaluations.evaluationResult.subSkillsEvaluationResults,"
                 "evaluations.evaluationResult.subSkillsEvaluationResults.subSkill,"
-                "evaluations.subSkills"
+                "evaluations.subSkills,evaluations.subSubject"
             ),
             "fields[evaluationService]": "coefficient,average,studentAverage,scale,subject,teachers",
-            "fields[evaluation]": "title,topic,dateTime,coefficient,average,scale,evaluationResult,subSkills",
+            "fields[evaluation]": "title,topic,dateTime,coefficient,average,scale,evaluationResult,subSkills,subSubject",
             # Once any `fields[...]` is given, types without their own
             # entry come back without attributes -- so the marks and the
             # skill levels (which live on these) must be listed too.
             "fields[evaluationResult]": "mark,nonEvaluationReason,subSkillsEvaluationResults",
             "fields[subSkillEvaluationResult]": "level,subSkill",
             "fields[subSkill]": "shortLabel,label",
+            # Some schools leave `title`/`topic` empty and the portal shows
+            # the sub-subject (e.g. "participation 2") instead.
+            "fields[subSubject]": "label",
         }
         if period_id:
             params["filter[period.id]"] = period_id
         try:
-            doc = self._request("GET", "/evaluation-services", params=params)
+            try:
+                doc = self._request("GET", "/evaluation-services", params=params)
+            except SkolengoApiError as err:
+                # The sub-subject part is a guess from the app's strings; if
+                # the server rejects it, fall back to the known-good query.
+                _LOGGER.debug("Evaluations with subSubject failed, retrying without: %s", err)
+                params["include"] = params["include"].replace(",evaluations.subSubject", "")
+                params["fields[evaluation]"] = params["fields[evaluation]"].replace(",subSubject", "")
+                params.pop("fields[subSubject]")
+                doc = self._request("GET", "/evaluation-services", params=params)
         except SkolengoApiError as err:
             _LOGGER.debug("Evaluations endpoint failed (non-fatal): %s", err)
             return []
