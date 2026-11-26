@@ -648,9 +648,9 @@ class SkolengoDataUpdateCoordinator(DataUpdateCoordinator[SkolengoData]):
                     continue
                 previous = self._known_lessons.get(lesson_id)
                 if previous is None:
-                    if not _is_lesson_addition_genuine(lesson, previous_agenda_end):
+                    event_type = _classify_new_lesson(lesson, previous_agenda_end)
+                    if event_type is None:
                         continue
-                    event_type = EVENT_TYPE_LESSON_ADDED
                 else:
                     event_type = _classify_lesson_change(previous, current[lesson_id])
                     if event_type is None:
@@ -696,6 +696,19 @@ def _classify_lesson_change(previous: dict, snapshot: dict) -> str | None:
     if snapshot["canceled"] and not previous["canceled"]:
         return EVENT_TYPE_LESSON_CANCELED
     return EVENT_TYPE_LESSON_MODIFIED
+
+
+def _classify_new_lesson(lesson: dict, previous_agenda_end: date | None) -> str | None:
+    """Event type for a lesson whose id wasn't known before, or `None`.
+
+    A genuinely new lesson that is already canceled is a cancellation, not an
+    addition: the API surfaces canceled lessons under a fresh id.
+    """
+    if not _is_lesson_addition_genuine(lesson, previous_agenda_end):
+        return None
+    if lesson.get("canceled"):
+        return EVENT_TYPE_LESSON_CANCELED
+    return EVENT_TYPE_LESSON_ADDED
 
 
 def _lesson_date(lesson: dict) -> date | None:
