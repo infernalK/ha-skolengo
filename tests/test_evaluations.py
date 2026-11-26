@@ -227,3 +227,18 @@ def test_format_grade_message_numeric_and_skills():
         )
         == "Maths : Calculer : Maîtrise satisfaisante"
     )
+
+
+def test_title_falls_back_to_sub_subject_label():
+    items = flatten_evaluations(
+        [
+            {
+                "subject": {"label": "Anglais"},
+                "evaluations": [
+                    {"id": "1", "title": None, "topic": None, "subSubject": {"label": "participation 2"}},
+                    {"id": "2", "title": "DS", "subSubject": {"label": "x"}},
+                ],
+            }
+        ]
+    )
+    assert [i["title"] for i in items] == ["participation 2", "DS"]
